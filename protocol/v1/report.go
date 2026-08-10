@@ -24,6 +24,7 @@ type Report struct {
 	Network     NetworkReport     `json:"network"`
 	Connections ConnectionsReport `json:"connections"`
 	GPU         *GPUDetailReport  `json:"gpu,omitempty"`
+	DiskIO      []DiskIOReport    `json:"disk_io,omitempty"`
 	Uptime      int64             `json:"uptime"`
 	Process     int               `json:"process"`
 	Message     string            `json:"message"`
@@ -50,6 +51,16 @@ type GPUDeviceInfo struct {
 	MemoryUsed  int64   `json:"memory_used"`
 	Utilization float64 `json:"utilization"`
 	Temperature int     `json:"temperature"`
+}
+
+// DiskIOReport 单块磁盘的 IO 速率（字节/秒、次/秒）
+type DiskIOReport struct {
+	Device     string  `json:"device"`
+	Mountpoint string  `json:"mountpoint"`
+	ReadBytes  float64 `json:"read_bytes"`
+	WriteBytes float64 `json:"write_bytes"`
+	ReadIOPS   float64 `json:"read_iops"`
+	WriteIOPS  float64 `json:"write_iops"`
 }
 
 // GPUReport is the legacy v1 single-GPU shape kept for wire compatibility.

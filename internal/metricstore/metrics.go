@@ -1,27 +1,31 @@
 package metricstore
 
 const (
-	MetricCPU            = "cpu.usage"
-	MetricGPU            = "gpu.usage"
-	MetricGPUDeviceUsage = "gpu.device.usage"
-	MetricGPUMem         = "gpu.memory.used"
-	MetricGPUMemTotal    = "gpu.memory.total"
-	MetricGPUTemp        = "gpu.temperature"
-	MetricRAM            = "memory.used"
-	MetricSwap           = "swap.used"
-	MetricLoad           = "load.average"
-	MetricDisk           = "disk.used"
-	MetricNetIn          = "net.in.rate"
-	MetricNetOut         = "net.out.rate"
-	MetricNetTotalUp     = "net.total.up"
-	MetricNetTotalDown   = "net.total.down"
-	MetricTrafficUp      = "traffic.up"
-	MetricTrafficDown    = "traffic.down"
-	MetricProcess        = "process.count"
-	MetricConnections    = "connections.tcp"
-	MetricConnectionsUDP = "connections.udp"
-	MetricPingLatency    = "ping.latency_ms"
-	MetricPingLoss       = "ping.loss"
+	MetricCPU              = "cpu.usage"
+	MetricGPU              = "gpu.usage"
+	MetricGPUDeviceUsage   = "gpu.device.usage"
+	MetricGPUMem           = "gpu.memory.used"
+	MetricGPUMemTotal      = "gpu.memory.total"
+	MetricGPUTemp          = "gpu.temperature"
+	MetricRAM              = "memory.used"
+	MetricSwap             = "swap.used"
+	MetricLoad             = "load.average"
+	MetricDisk             = "disk.used"
+	MetricNetIn            = "net.in.rate"
+	MetricNetOut           = "net.out.rate"
+	MetricNetTotalUp       = "net.total.up"
+	MetricNetTotalDown     = "net.total.down"
+	MetricTrafficUp        = "traffic.up"
+	MetricTrafficDown      = "traffic.down"
+	MetricProcess          = "process.count"
+	MetricConnections      = "connections.tcp"
+	MetricConnectionsUDP   = "connections.udp"
+	MetricPingLatency      = "ping.latency_ms"
+	MetricPingLoss         = "ping.loss"
+	MetricDiskIOReadBytes  = "disk_io.read_bytes"
+	MetricDiskIOWriteBytes = "disk_io.write_bytes"
+	MetricDiskIOReadIOPS   = "disk_io.read_iops"
+	MetricDiskIOWriteIOPS  = "disk_io.write_iops"
 )
 
 // loadRecordMetricNames are the entity-level metrics used to reconstruct the
@@ -43,7 +47,14 @@ var recordMetricNames = joinMetricNames(loadRecordMetricNames, gpuDeviceRecordMe
 // Ping has an independent retention and cleanup boundary.
 var pingMetricNames = []string{MetricPingLatency, MetricPingLoss}
 
-var builtinMetricNames = joinMetricNames(recordMetricNames, pingMetricNames)
+// diskIOMetricNames are per-device disk IO rate metrics, not part of the legacy
+// Record response shape but included in builtin cleanup boundaries.
+var diskIOMetricNames = []string{
+	MetricDiskIOReadBytes, MetricDiskIOWriteBytes,
+	MetricDiskIOReadIOPS, MetricDiskIOWriteIOPS,
+}
+
+var builtinMetricNames = joinMetricNames(recordMetricNames, pingMetricNames, diskIOMetricNames)
 
 func metricNameForRecordField(name string) (string, bool) {
 	switch name {

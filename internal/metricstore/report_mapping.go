@@ -30,6 +30,18 @@ func reportMetricPoints(report v1.Report, trafficUp, trafficDown int64) []metric
 		{MetricName: MetricConnections, EntityID: entityID, Timestamp: ts, Value: float64(report.Connections.TCP)},
 		{MetricName: MetricConnectionsUDP, EntityID: entityID, Timestamp: ts, Value: float64(report.Connections.UDP)},
 	}
+	for _, d := range report.DiskIO {
+		tags := map[string]string{
+			"device":     d.Device,
+			"mountpoint": d.Mountpoint,
+		}
+		points = append(points,
+			metric.Point{MetricName: MetricDiskIOReadBytes, EntityID: entityID, Timestamp: ts, Value: d.ReadBytes, Tags: tags},
+			metric.Point{MetricName: MetricDiskIOWriteBytes, EntityID: entityID, Timestamp: ts, Value: d.WriteBytes, Tags: tags},
+			metric.Point{MetricName: MetricDiskIOReadIOPS, EntityID: entityID, Timestamp: ts, Value: d.ReadIOPS, Tags: tags},
+			metric.Point{MetricName: MetricDiskIOWriteIOPS, EntityID: entityID, Timestamp: ts, Value: d.WriteIOPS, Tags: tags},
+		)
+	}
 	if report.GPU == nil {
 		return points
 	}
