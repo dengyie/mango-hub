@@ -7,7 +7,7 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 env:
@@ -19,6 +19,142 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Generate snapshot version
+        id: version
+        run: |
+          VERSION="Snapshot-$(date -u +%y%m%d%H%M)"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Snapshot version: ${VERSION}"
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build frontend embed artifact
+        uses: ./.github/actions/build-frontend
+        with:
+          artifact-name: komari-frontend
+
+  build-and-attach-binaries:
+    needs: [prepare, build-frontend]
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            zig_target_triple: x86_64-linux-musl
+          - goos: linux
+            goarch: arm64
+            zig_target_triple: aarch64-linux-musl
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Restore frontend embed artifact
+        uses: ./.github/actions/restore-frontend
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Setup Zig (for CGO musl cross-compile)
+        uses: ./.github/actions/setup-zig
+
+      - name: Build linux binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 1
+          CC: zig cc -target ${{ matrix.zig_target_triple }}
+          GIN_MODE: release
+        run: |
+          BINARY_NAME=komari-${{ matrix.goos }}-${{ matrix.goarch }}
+          VERSION="${{ needs.prepare.outputs.version }}"
+          VERSION_HASH="${{ github.sha }}"
+          go build -trimpath -ldflags="-s -w -X github.com/komari-monitor/komari/utils.CurrentVersion=${VERSION} -X github.com/komari-monitor/komari/utils.VersionHash=${VERSION_HASH}" -o $BINARY_NAME
+
+      - name: Upload binary as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: komari-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: komari-${{ matrix.goos }}-${{ matrix.goarch }}
+
+  publish-snapshot-release:
+    needs: [prepare, build-and-attach-binaries]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Ensure commit is still current main
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          MAIN_SHA="$(git rev-parse FETCH_HEAD)"
+
+          if [ "${GITHUB_SHA}" != "${MAIN_SHA}" ]; then
+            echo "Snapshot publish skipped because a newer main commit exists."
+            echo "Workflow SHA: ${GITHUB_SHA}"
+            echo "Current main: ${MAIN_SHA}"
+            exit 1
+          fi
+
+      - name: Download all binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create snapshot prerelease and upload binaries
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euxo pipefail
+          echo "Snapshot version: ${VERSION}"
+          ls -alR artifacts
+
+          if gh release view "${VERSION}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release ${VERSION} already exists, deleting it before recreation..."
+            gh release delete "${VERSION}" --repo "${{ github.repository }}" --cleanup-tag --yes
+          fi
+
+          gh release create "${VERSION}" \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "${VERSION}" \
+            --notes "Automated snapshot build (${VERSION}) from commit ${{ github.sha }}." \
+            --prerelease \
+            artifacts/komari-*
+
+          gh release list \
+            --repo "${{ github.repository }}" \
+            --limit 1000 \
+            --json tagName,isPrerelease \
+            --jq '.[] | select(.isPrerelease and (.tagName | startswith("Snapshot-"))) | .tagName' |
+          while IFS= read -r tag; do
+            if [ -z "${tag}" ] || [ "${tag}" = "${VERSION}" ]; then
+              continue
+            fi
+
+            echo "Deleting old snapshot release ${tag}..."
+            gh release delete "${tag}" --repo "${{ github.repository }}" --cleanup-tag --yes
+          done
+        shell: bash
+
   build-and-push-docker:
     runs-on: ubuntu-latest
     steps:
