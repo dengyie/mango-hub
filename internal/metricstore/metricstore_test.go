@@ -240,8 +240,8 @@ func TestCreateMetricDefinitionsUsesExplicitRetentionAndPreservesOverrides(t *te
 	if err != nil {
 		t.Fatalf("list definitions: %v", err)
 	}
-	if len(defs) != 21 {
-		t.Fatalf("definition count = %d, want 21", len(defs))
+	if len(defs) != 25 {
+		t.Fatalf("definition count = %d, want 25", len(defs))
 	}
 	for _, def := range defs {
 		if def.RetentionDays != defaultBuiltinMetricRetentionDays {
