@@ -138,7 +138,7 @@ jobs:
             --title "${VERSION}" \
             --notes "Automated snapshot build (${VERSION}) from commit ${{ github.sha }}." \
             --prerelease \
-            artifacts/komari-*
+            artifacts/komari-linux-*
 
           gh release list \
             --repo "${{ github.repository }}" \
