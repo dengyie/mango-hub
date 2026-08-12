@@ -73,3 +73,25 @@ mkdir -p /path/to/komari/web/public/defaultTheme/dist
 cp -r dist/* /path/to/komari/web/public/defaultTheme/dist/
 cp komari-theme.json /path/to/komari/web/public/defaultTheme/
 ```
+
+---
+
+## Deer Theme (built-in default) / Deer 主题(内建默认) / Deer テーマ（組み込みデフォルト）
+
+### English
+
+- **Source**: vendored in-tree at `web/theme/komari-deer/` (Next.js App Router, static export).
+- Both `defaultTheme/` (cloned komari-web) and `deerTheme/` (vendored deer) are **built by CI** via `.github/actions/build-frontend/action.yml` and packed/unpacked as one frontend artifact; **neither embed directory is git-tracked**.
+- Local backend `go build` requires the embed directories, which only CI produces — the same as before for `defaultTheme`.
+
+### 中文
+
+- **源码**:内建在 `web/theme/komari-deer/`(Next.js App Router,静态导出)。
+- `defaultTheme/`(克隆 komari-web)与 `deerTheme/`(内建 deer)都由 **CI 构建**(`.github/actions/build-frontend/action.yml`),作为一个前端 artifact 打包/解包;**两个 embed 目录都非 git-tracked**。
+- 本地后端 `go build` 依赖 embed 目录,只有 CI 会生成——与原先 `defaultTheme` 的情况一致。
+
+### 日本語
+
+- **ソース**:`web/theme/komari-deer/` に同梱（Next.js App Router、静的エクスポート）。
+- `defaultTheme/`（クローンした komari-web）と `deerTheme/`（同梱 deer）はどちらも **CI がビルド**（`.github/actions/build-frontend/action.yml`）し、単一のフロントエンド artifact として打包/展開します。**embed ディレクトリはどちらも git 管理外**です。
+- ローカルのバックエンド `go build` は embed ディレクトリ（CI のみが生成）を必要とします。`defaultTheme` と同様です。

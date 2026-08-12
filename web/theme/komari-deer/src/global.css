@@ -1,0 +1,722 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-accent-1: var(--accent-1);
+  --color-accent-2: var(--accent-2);
+  --color-accent-3: var(--accent-3);
+  --color-accent-4: var(--accent-4);
+  --color-accent-5: var(--accent-5);
+  --color-accent-6: var(--accent-6);
+  --color-accent-7: var(--accent-7);
+  --color-accent-8: var(--accent-8);
+  --color-accent-9: var(--accent-9);
+  --color-accent-10: var(--accent-10);
+  --color-accent-11: var(--accent-11);
+  --color-accent-12: var(--accent-12);
+  --color-accent-a1: var(--accent-a1);
+  --color-accent-a2: var(--accent-a2);
+  --color-accent-a3: var(--accent-a3);
+  --color-accent-a4: var(--accent-a4);
+  --color-accent-a5: var(--accent-a5);
+  --color-accent-a6: var(--accent-a6);
+  --color-accent-a7: var(--accent-a7);
+  --color-accent-a8: var(--accent-a8);
+  --color-accent-a9: var(--accent-a9);
+  --color-accent-a10: var(--accent-a10);
+  --color-accent-a11: var(--accent-a11);
+  --color-accent-a12: var(--accent-a12);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.75rem;
+  --background: oklch(0.98 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    overflow-x: hidden;
+    overflow-x: clip;
+    scrollbar-gutter: stable;
+  }
+  body {
+    @apply bg-background text-foreground;
+    min-height: 100vh;
+    overflow-x: hidden;
+    overflow-x: clip;
+  }
+}
+
+body[data-custom-background="true"] {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+  background-image: none !important;
+}
+
+body[data-custom-background="true"]::before {
+  content: "";
+  position: fixed;
+  top: calc(var(--komari-custom-background-bleed, 0px) * -1);
+  right: calc(var(--komari-custom-background-bleed, 0px) * -1);
+  bottom: calc(var(--komari-custom-background-bleed, 0px) * -1);
+  left: calc(var(--komari-custom-background-bleed, 0px) * -1);
+  z-index: -1;
+  pointer-events: none;
+  background-image: var(--komari-custom-background-image);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  filter: var(--komari-custom-background-filter, none);
+  will-change: filter;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(80,80,80,0.4);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+body, * {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(80,80,80,0.4) transparent;
+}
+
+:root[data-color-theme="midnight"] {
+  --background: oklch(0.96 0.01 270);
+  --foreground: oklch(0.15 0.02 270);
+  --card: oklch(0.99 0.005 270);
+  --card-foreground: oklch(0.15 0.02 270);
+  --primary: oklch(0.5 0.2 270);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.94 0.02 270);
+  --secondary-foreground: oklch(0.2 0.02 270);
+  --accent: oklch(0.6 0.15 290);
+  --accent-foreground: oklch(0.15 0.02 270);
+  --muted: oklch(0.94 0.02 270);
+  --muted-foreground: oklch(0.5 0.02 270);
+  --ring: oklch(0.5 0.2 270);
+  --border: oklch(0.9 0.01 270);
+}
+
+.dark[data-color-theme="midnight"] {
+  --background: oklch(0.13 0.02 270);
+  --foreground: oklch(0.95 0.01 270);
+  --card: oklch(0.18 0.02 270);
+  --card-foreground: oklch(0.95 0.01 270);
+  --primary: oklch(0.6 0.2 270);
+  --primary-foreground: oklch(0.1 0.02 270);
+  --secondary: oklch(0.25 0.02 270);
+  --secondary-foreground: oklch(0.95 0.01 270);
+  --accent: oklch(0.4 0.15 290);
+  --accent-foreground: oklch(0.95 0.01 270);
+  --muted: oklch(0.25 0.02 270);
+  --muted-foreground: oklch(0.65 0.02 270);
+  --ring: oklch(0.6 0.2 270);
+  --border: oklch(0.25 0.02 270);
+}
+
+:root[data-color-theme="midnight"] body {
+  background-image:
+    radial-gradient(at 10% 30%, oklch(0.6 0.12 270 / 0.06) 0px, transparent 50%),
+    radial-gradient(at 90% 70%, oklch(0.6 0.12 290 / 0.06) 0px, transparent 50%);
+}
+
+.dark[data-color-theme="midnight"] body {
+  background-image:
+    radial-gradient(at 10% 30%, oklch(0.4 0.2 270 / 0.15) 0px, transparent 50%),
+    radial-gradient(at 90% 70%, oklch(0.4 0.2 290 / 0.15) 0px, transparent 50%);
+}
+
+.deer-network-capsule {
+  position: fixed;
+  left: 50%;
+  bottom: max(30px, env(safe-area-inset-bottom));
+  z-index: 1850;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(92vw, 760px);
+  padding: 8px clamp(10px, 2vw, 20px);
+  border: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+  border-radius: 999px;
+  background:
+    linear-gradient(135deg, color-mix(in oklab, var(--card) 82%, var(--primary) 7%), color-mix(in oklab, var(--background) 62%, transparent));
+  color: var(--foreground);
+  -webkit-backdrop-filter: blur(24px) saturate(170%);
+  backdrop-filter: blur(24px) saturate(170%);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.18);
+  font-size: clamp(11px, 2.5vw, 14px);
+  font-weight: 500;
+  line-height: 1.25;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(30px);
+  animation-name: deerNetworkCapsuleCycle;
+  animation-duration: var(--deer-network-cycle-time, 6500ms);
+  animation-timing-function: ease;
+  animation-delay: var(--deer-network-show-delay, 1500ms);
+  animation-fill-mode: both;
+  transition:
+    opacity 1.5s ease,
+    transform 1.5s cubic-bezier(0.2, 0.8, 0.2, 1),
+    visibility 1.5s,
+    background 0.3s ease,
+    border-color 0.3s ease,
+    color 0.3s ease;
+}
+
+.deer-network-capsule.is-active {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+}
+
+.deer-network-capsule-icon {
+  width: 1.4em;
+  height: 1.4em;
+  flex: 0 0 auto;
+  color: var(--primary);
+}
+
+.deer-network-capsule-prefix {
+  color: var(--primary);
+  font-weight: 650;
+}
+
+.deer-network-capsule-divider {
+  display: inline-block;
+  width: 1px;
+  height: 12px;
+  margin: 0 6px;
+  background: color-mix(in oklab, var(--foreground) 18%, transparent);
+  vertical-align: -2px;
+}
+
+.deer-network-capsule-isp {
+  display: inline-block;
+  max-width: 40vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.deer-back-top {
+  position: fixed;
+  right: 118px;
+  bottom: max(45px, calc(env(safe-area-inset-bottom) + 45px));
+  z-index: 1850;
+  width: 40px;
+  height: 40px;
+  border: 1px solid color-mix(in oklab, var(--border) 74%, transparent);
+  border-radius: 999px;
+  background:
+    linear-gradient(135deg, color-mix(in oklab, var(--card) 84%, var(--primary) 8%), color-mix(in oklab, var(--background) 58%, transparent));
+  color: var(--foreground);
+  -webkit-backdrop-filter: blur(24px) saturate(170%);
+  backdrop-filter: blur(24px) saturate(170%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(10px) scale(0.9);
+  transition:
+    opacity 0.3s ease,
+    visibility 0.3s ease,
+    transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1),
+    background 0.3s ease,
+    border-color 0.3s ease;
+}
+
+.deer-back-top.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+}
+
+.deer-back-top:hover,
+.deer-back-top:focus-visible {
+  border-color: color-mix(in oklab, var(--primary) 42%, var(--border));
+  background:
+    linear-gradient(135deg, color-mix(in oklab, var(--card) 88%, var(--primary) 12%), color-mix(in oklab, var(--background) 72%, transparent));
+  transform: translateY(-2px) scale(1);
+}
+
+.deer-back-top svg {
+  width: 20px;
+  height: 20px;
+}
+
+@keyframes deerNetworkCapsuleCycle {
+  0% {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateX(-50%) translateY(30px);
+  }
+  16%, 78% {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateX(-50%) translateY(30px);
+  }
+}
+
+.deer-earth-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.45);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  animation: deerEarthOverlayIn 0.3s ease-out forwards;
+}
+
+.deer-earth-modal-overlay.is-closing {
+  animation: deerEarthOverlayOut 0.25s ease-in forwards;
+}
+
+.deer-earth-modal-content {
+  position: relative;
+  width: min(80vw, 1400px);
+  height: min(80vh, 900px);
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, var(--border) 70%, #00d8ff 30%);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(0, 22, 44, 0.42), rgba(0, 0, 0, 0.2)),
+    color-mix(in oklab, var(--card) 72%, transparent);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  box-shadow:
+    0 30px 90px rgba(0, 0, 0, 0.46),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  animation: deerEarthModalIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.deer-earth-modal-content.is-closing {
+  animation: deerEarthModalOut 0.25s ease-in forwards;
+}
+
+.deer-earth-render-area {
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+.deer-earth-render-area.is-ready {
+  opacity: 1;
+}
+
+.deer-earth-stage,
+.deer-earth-canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+}
+
+.deer-earth-stage:active,
+.deer-earth-canvas:active {
+  cursor: grabbing;
+}
+
+.deer-earth-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-foreground);
+  font-size: 0.9rem;
+}
+
+.deer-earth-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 4;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 12, 24, 0.42);
+  color: rgba(255, 255, 255, 0.86);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+.deer-earth-counter {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  z-index: 4;
+  min-width: 112px;
+  padding: 12px 18px;
+  border: 1px solid rgba(0, 216, 255, 0.32);
+  border-radius: 12px;
+  background: rgba(0, 20, 40, 0.58);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+}
+
+.deer-earth-counter span {
+  display: block;
+  margin-bottom: 4px;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.72rem;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.deer-earth-counter strong {
+  display: block;
+  color: #00d8ff;
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.deer-earth-user-marker {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 22, 44, 0.45);
+  box-shadow: 0 0 0 0 rgba(0, 216, 255, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  animation: deerEarthUserPulse 2s infinite cubic-bezier(0.4, 0, 0.6, 1);
+}
+
+.deer-earth-user-marker img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.deer-earth-user-marker.is-original {
+  width: auto;
+  border-radius: 8px;
+}
+
+.deer-earth-user-marker.is-original img {
+  width: auto;
+  height: 32px;
+  object-fit: contain;
+  border-radius: 0;
+}
+
+.deer-earth-flag-img {
+  width: 24px;
+  height: auto;
+  display: block;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  transition:
+    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    filter 0.3s ease;
+  filter: drop-shadow(0 0 4px #00d8ff);
+}
+
+.deer-earth-flag-img.status-online {
+  filter: drop-shadow(0 0 5px #21d7a7);
+}
+
+.deer-earth-flag-img.status-partial {
+  filter: drop-shadow(0 0 5px #f5aa26);
+}
+
+.deer-earth-flag-img.status-offline {
+  filter: drop-shadow(0 0 5px #ff4f78);
+}
+
+.deer-earth-tooltip {
+  position: absolute;
+  z-index: 9;
+  display: none;
+  min-width: 210px;
+  max-width: min(320px, calc(100vw - 48px));
+  padding: 12px 16px;
+  border: 1px solid rgba(0, 216, 255, 0.64);
+  border-radius: 10px;
+  background: rgba(0, 20, 40, 0.78);
+  color: rgba(255, 255, 255, 0.92);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.35);
+  pointer-events: auto;
+}
+
+.deer-earth-tooltip-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  color: #00d8ff;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.deer-earth-tooltip-header span:last-child {
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 0.76rem;
+  font-weight: 500;
+}
+
+.deer-earth-tooltip-content {
+  max-height: 210px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.deer-earth-tooltip-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 0;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.92rem;
+}
+
+.deer-earth-tooltip-item::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #00d8ff;
+  box-shadow: 0 0 10px rgba(0, 216, 255, 0.72);
+}
+
+@keyframes deerEarthOverlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes deerEarthOverlayOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes deerEarthModalIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes deerEarthModalOut {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.92); }
+}
+
+@keyframes deerEarthUserPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(0, 216, 255, 0.68);
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 15px rgba(0, 216, 255, 0);
+    transform: translate(-50%, -50%) scale(1.15);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 216, 255, 0);
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@media (max-width: 768px) {
+  .deer-network-capsule {
+    max-width: min(92vw, 520px);
+  }
+
+  .deer-network-capsule-prefix {
+    display: none;
+  }
+
+  .deer-network-capsule-isp {
+    max-width: 34vw;
+  }
+
+  .deer-back-top {
+    right: 20px;
+    bottom: max(86px, calc(env(safe-area-inset-bottom) + 86px));
+  }
+
+  .deer-earth-modal-overlay {
+    padding: 12px;
+  }
+
+  .deer-earth-modal-content {
+    width: 95vw;
+    height: 75vh;
+    border-radius: 16px;
+  }
+
+  .deer-earth-counter {
+    top: 10px;
+    left: 10px;
+    min-width: 86px;
+    padding: 8px 12px;
+  }
+
+  .deer-earth-counter span {
+    font-size: 0.65rem;
+  }
+
+  .deer-earth-counter strong {
+    font-size: 1.5rem;
+  }
+
+  .deer-earth-close {
+    top: 10px;
+    right: 10px;
+  }
+
+  .deer-earth-user-marker {
+    width: 28px;
+    height: 28px;
+  }
+
+  .deer-earth-tooltip {
+    min-width: 0;
+    width: calc(100vw - 48px);
+  }
+}
