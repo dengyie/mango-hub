@@ -87,6 +87,15 @@ func ListThemes(c *gin.Context) {
 		}
 
 	}
+	// 内置 deer 主题（embed，本地无包时同样可见）
+	if deerTheme, err := public.DeerThemeFS.ReadFile("deerTheme/komari-theme.json"); err == nil {
+		dt := models.Theme{}
+		if err := json.Unmarshal(deerTheme, &dt); err == nil {
+			if dt.Short == public.DeerThemeID {
+				themes = append(themes, dt)
+			}
+		}
+	}
 	for _, entry := range entries {
 		if entry.IsDir() {
 			themeConfigPath := filepath.Join(dataDir, entry.Name(), "komari-theme.json")
@@ -153,12 +162,15 @@ func SetTheme(c *gin.Context) {
 			api.RespondError(c, http.StatusBadRequest, "无效的主题名称")
 			return
 		}
-		themeDir := filepath.Join("./data/theme", themeName)
-		themeConfigPath := filepath.Join(themeDir, "komari-theme.json")
+		// 内置 deer 主题：无需本地包即可激活
+		if themeName != public.DeerThemeID {
+			themeDir := filepath.Join("./data/theme", themeName)
+			themeConfigPath := filepath.Join(themeDir, "komari-theme.json")
 
-		if _, err := os.Stat(themeConfigPath); os.IsNotExist(err) {
-			api.RespondError(c, http.StatusNotFound, "主题不存在")
-			return
+			if _, err := os.Stat(themeConfigPath); os.IsNotExist(err) {
+				api.RespondError(c, http.StatusNotFound, "主题不存在")
+				return
+			}
 		}
 	}
 
