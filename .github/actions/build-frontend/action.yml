@@ -1,5 +1,5 @@
 name: Build frontend theme
-description: Clone komari-web, build the default theme, and optionally upload it as an artifact.
+description: Build the default (komari-web) and vendored deer themes, and optionally upload them as an artifact.
 
 inputs:
   node-version:
@@ -47,12 +47,30 @@ runs:
         if [ -f web/public/defaultTheme/preview.png ] && [ ! -f web/public/defaultTheme/perview.png ]; then cp -f web/public/defaultTheme/preview.png web/public/defaultTheme/perview.png; fi
         if [ -f web/public/defaultTheme/perview.png ] && [ ! -f web/public/defaultTheme/preview.png ]; then cp -f web/public/defaultTheme/perview.png web/public/defaultTheme/preview.png; fi
 
+    - name: Build vendored deer theme
+      shell: bash
+      run: |
+        set -euxo pipefail
+        if [ -f web/theme/komari-deer/package.json ]; then
+          cd web/theme/komari-deer
+          npm ci
+          npm run build
+          cd ../..
+          mkdir -p web/public/deerTheme/dist
+          rm -rf web/public/deerTheme/dist/*
+          cp -r web/theme/komari-deer/dist/* web/public/deerTheme/dist/
+          cp -f web/theme/komari-deer/komari-theme.json web/public/deerTheme/
+          if [ -f web/theme/komari-deer/preview.png ]; then cp -f web/theme/komari-deer/preview.png web/public/deerTheme/; fi
+        else
+          echo "No vendored deer theme found; skipping deer build"
+        fi
+
     - name: Pack frontend artifact
       if: ${{ inputs.artifact-name != '' }}
       shell: bash
       run: |
         set -euxo pipefail
-        tar -czf "$RUNNER_TEMP/${{ inputs.artifact-name }}.tar.gz" -C web/public/defaultTheme .
+        tar -czf "$RUNNER_TEMP/${{ inputs.artifact-name }}.tar.gz" -C web/public .
 
     - name: Upload frontend artifact
       if: ${{ inputs.artifact-name != '' }}

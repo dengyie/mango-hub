@@ -19,6 +19,6 @@ runs:
       shell: bash
       run: |
         set -euxo pipefail
-        mkdir -p web/public/defaultTheme
-        rm -rf web/public/defaultTheme/*
-        tar -xzf "$RUNNER_TEMP/frontend-artifact/${{ inputs.artifact-name }}.tar.gz" -C web/public/defaultTheme
+        mkdir -p web/public
+        rm -rf web/public/defaultTheme web/public/deerTheme
+        tar -xzf "$RUNNER_TEMP/frontend-artifact/${{ inputs.artifact-name }}.tar.gz" -C web/public
