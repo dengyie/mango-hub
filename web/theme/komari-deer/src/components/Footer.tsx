@@ -54,7 +54,7 @@ const Footer = () => {
 
         {/* Bottom text */}
         <p className="text-center text-xs text-white/50">
-          <a href="https://github.com/dengyie/komari-deer" target="_blank" rel="noreferrer" className="font-semibold text-white/70 hover:text-cyan-400 transition-colors">Komari Deer</a>
+          <a href="https://github.com/dengyie/vps-monitor-host" target="_blank" rel="noreferrer" className="font-semibold text-white/70 hover:text-cyan-400 transition-colors">Komari Deer</a>
           {' · '}
           <span>Where monitoring meets elegance</span>
           {' · '}

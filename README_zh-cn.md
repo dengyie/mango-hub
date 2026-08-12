@@ -29,7 +29,7 @@ Komari 是一款轻量级的自托管服务器监控工具，旨在提供简单�
 - 新安装开箱即用，无需手工上传主题包。
 - `/admin` 与 `/terminal` 始终渲染官方 default 主题（隔离不变）。
 - 主题资源嵌入二进制（`web/public/deerTheme/`，`//go:embed all:deerTheme`）；存在上传的 `./data/theme/komari-deer/` 覆盖包时以覆盖包为准（zip 热更语义）。
-- 主题源码：<https://github.com/dengyie/komari-deer>
+- 主题源码：内建在 `web/theme/komari-deer/`（Next.js，静态导出）；由 CI 构建（`.github/actions/build-frontend`），embed 产物非 git 跟踪。
 
 ## 快速开始
 
