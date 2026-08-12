@@ -56,6 +56,21 @@ runs:
           npm ci
           npm run build
           cd ../..
+          echo "=== DIAG: repo root = $(pwd)"
+          echo "=== DIAG: vendored top-level ==="
+          ls -la web/theme/komari-deer/ | head -30
+          echo "=== DIAG: src present? ==="
+          ls web/theme/komari-deer/src 2>&1 | head -5
+          echo "=== DIAG: .next ==="
+          ls web/theme/komari-deer/.next 2>&1 | head -20
+          echo "=== DIAG: dist ==="
+          if [ -d web/theme/komari-deer/dist ]; then
+            echo "DIST OK, files: $(find web/theme/komari-deer/dist -type f | wc -l)"
+          else
+            echo "DIST MISSING"
+            find web/theme/komari-deer -maxdepth 2 -type d \( -name dist -o -name export \) | head
+            find web/theme/komari-deer -maxdepth 3 -name "index.html" | head
+          fi
           mkdir -p web/public/deerTheme/dist
           rm -rf web/public/deerTheme/dist/*
           cp -r web/theme/komari-deer/dist/* web/public/deerTheme/dist/
