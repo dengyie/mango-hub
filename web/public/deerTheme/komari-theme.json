@@ -2,7 +2,7 @@
   "name": "Komari Deer",
   "short": "komari-deer",
   "description": "Deer themed Komari Monitor dashboard (node card popover resource curves)",
-  "version": "0.1.17",
+  "version": "0.1.19",
   "author": "dengyie",
   "url": "https://github.com/dengyie/komari-deer",
   "preview": "preview.png",
