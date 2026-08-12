@@ -29,7 +29,7 @@ This fork embeds the **Komari Deer** dashboard theme (`komari-deer`, Next.js) as
 - New installations get it out of the box — no manual theme upload required.
 - `/admin` and `/terminal` always render the stock default theme (isolation preserved).
 - Theme assets are embedded into the binary (`web/public/deerTheme/`, `//go:embed all:deerTheme`); an uploaded `./data/theme/komari-deer/` package takes precedence as a hot-fix override.
-- Theme source: <https://github.com/dengyie/komari-deer>
+- Theme source: vendored in-tree at `web/theme/komari-deer/` (Next.js, static export); built by CI (`.github/actions/build-frontend`), embed output git-untracked.
 
 ## Quick Start
 
