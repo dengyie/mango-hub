@@ -22,6 +22,15 @@ Komari is a lightweight, self-hosted server monitoring solution. It provides a s
 - **Web interface**: Provides an intuitive, easy-to-use monitoring dashboard.
 - **Extensible**: Supports custom themes and plugins.
 
+## Built-in Theme
+
+This fork embeds the **Komari Deer** dashboard theme (`komari-deer`, Next.js) as a built-in theme:
+
+- New installations get it out of the box — no manual theme upload required.
+- `/admin` and `/terminal` always render the stock default theme (isolation preserved).
+- Theme assets are embedded into the binary (`web/public/deerTheme/`, `//go:embed all:deerTheme`); an uploaded `./data/theme/komari-deer/` package takes precedence as a hot-fix override.
+- Theme source: <https://github.com/dengyie/komari-deer>
+
 ## Quick Start
 
 | Platform                                                                                                                                                                                                  | Description                                                                                                                                                              |

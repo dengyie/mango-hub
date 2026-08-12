@@ -87,22 +87,33 @@ func ListThemes(c *gin.Context) {
 		}
 
 	}
-	// 内置 deer 主题（embed，本地无包时同样可见）
+	// 内置 deer 主题（embed 兜底；local 覆盖包存在时以 local 版本信息为准，避免重复列出）
+	var deerThemeInfo *models.Theme
 	if deerTheme, err := public.DeerThemeFS.ReadFile("deerTheme/komari-theme.json"); err == nil {
 		dt := models.Theme{}
 		if err := json.Unmarshal(deerTheme, &dt); err == nil {
 			if dt.Short == public.DeerThemeID {
-				themes = append(themes, dt)
+				deerThemeInfo = &dt
 			}
 		}
 	}
 	for _, entry := range entries {
 		if entry.IsDir() {
 			themeConfigPath := filepath.Join(dataDir, entry.Name(), "komari-theme.json")
-			if themeInfo, err := loadThemeConfig(themeConfigPath); err == nil {
-				themes = append(themes, themeInfo)
+			themeInfo, err := loadThemeConfig(themeConfigPath)
+			if err != nil {
+				continue
 			}
+			if themeInfo.Short == public.DeerThemeID {
+				// local 覆盖包优先（实际渲染源），替换 embed 条目
+				deerThemeInfo = &themeInfo
+				continue
+			}
+			themes = append(themes, themeInfo)
 		}
+	}
+	if deerThemeInfo != nil {
+		themes = append(themes, *deerThemeInfo)
 	}
 
 	api.RespondSuccess(c, themes)
