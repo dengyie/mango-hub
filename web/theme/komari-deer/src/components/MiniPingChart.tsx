@@ -43,6 +43,10 @@ const colors = [
   "#FFD600",
 ];
 
+// 空响应时的有限重试:hub 侧 rollup 物化/维护窗口可能瞬时返回 0 条
+const MAX_EMPTY_RETRIES = 3;
+const EMPTY_RETRY_DELAY_MS = 1500;
+
 interface MiniPingChartProps {
   uuid: string;
   width?: string | number;
@@ -58,31 +62,48 @@ const MiniPingChart = ({
 }: MiniPingChartProps) => {
   const [remoteData, setRemoteData] = useState<PingRecord[] | null>(null);
   const [tasks, setTasks] = useState<TaskInfo[]>([]);
-  const [loading, setLoading] = useState(false);
+  // 初始即 loading，避免首帧（useEffect 尚未执行时）闪现 "No ping data"
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hiddenLines, setHiddenLines] = useState<Record<string, boolean>>({});
   const [t] = useTranslation();
   const [cutPeak, setCutPeak] = useState(false);
   const { call } = useRPC2Call();
+  // 间歇性空读:hub 侧 rollup 物化/维护窗口可能瞬时返回 0 条(难以稳定复现)。
+  // 一次空响应就当最终结果会让卡片永久卡在 "No ping data",这里有限重试再判死。
   useEffect(() => {
     if (!uuid) return;
 
-    setLoading(true);
-    setError(null);
-    (async () => {
+    let cancelled = false;
+    const fetchRecords = async (attempt: number) => {
+      if (cancelled) return;
+      setLoading(true);
+      setError(null);
       try {
         type RpcResp = { count: number; records: PingRecord[]; tasks?: TaskInfo[] };
         const result = await call<any, RpcResp>("common:getRecords", { uuid, type: "ping", hours });
+        if (cancelled) return;
         const records = result?.records || [];
-        records.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
-        setRemoteData(records);
+        if (records.length === 0 && attempt < MAX_EMPTY_RETRIES) {
+          setTimeout(() => fetchRecords(attempt + 1), EMPTY_RETRY_DELAY_MS);
+          return;
+        }
+        const sorted = [...records].sort(
+          (a, b) => new Date(a.time).getTime() - new Date(b.time).getTime()
+        );
+        setRemoteData(sorted);
         setTasks(result?.tasks || []);
         setLoading(false);
       } catch (err: any) {
+        if (cancelled) return;
         setError(err?.message || "Error");
         setLoading(false);
       }
-    })();
+    };
+    fetchRecords(0);
+    return () => {
+      cancelled = true;
+    };
   }, [uuid, hours]);
 
   const chartData = useMemo(() => {
