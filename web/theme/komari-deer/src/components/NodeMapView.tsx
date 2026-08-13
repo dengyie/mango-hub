@@ -11,9 +11,19 @@ import { buildMapViewSummary, type MapRegionSummary } from "@/utils/mapRegions";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Flag from "@/components/Flag";
-import { getProjectedWorldMap } from "@/components/nodeMapViewGeometry";
+import type {
+  NodeMapCountryGeometry,
+  ProjectedWorldMap,
+} from "@/components/nodeMapViewGeometry";
+import {
+  getRotatedMap,
+  INITIAL_ROTATION,
+} from "@/components/nodeMapViewGeometry";
 
 import "./NodeMapView.css";
+
+/** 自转经度增量(度/帧)。约 0.15°/帧 ≈ 45fps 下每秒 ~6.75°,缓慢可读。 */
+const ROTATE_DEG_PER_FRAME = 0.15;
 
 interface NodeMapViewProps {
   nodes: NodeBasicInfo[];
@@ -64,6 +74,16 @@ function getRegionStatusBadgeClass(status: "online" | "offline" | "partial") {
   }
 }
 
+/**
+ * 绑定到每个国家 path 的视图模型:几何(随旋转更新)+当前关联的区域摘要+是否高亮。
+ * 几何 pathData 由 React 渲染初始帧(SSG 一致),rAF 自转循环里用 imperative setAttribute
+ * 覆盖更新 path d 与 marker 坐标,避免每帧触发 React reconciliation(177 国)。
+ */
+type CountryView = NodeMapCountryGeometry & {
+  activeRegion: MapRegionSummary | null;
+  marker: { x: number; y: number } | null;
+};
+
 export function NodeMapView({
   nodes,
   liveData,
@@ -76,6 +96,13 @@ export function NodeMapView({
   const hoverCardRef = useRef<HTMLDivElement | null>(null);
   const hoverFrameRef = useRef<number | null>(null);
   const pendingHoverPositionRef = useRef<Omit<HoveredRegion, "regionKey"> | null>(null);
+
+  // 自转运行态(全部走 ref,不触发重渲染):rAF 句柄、当前 rotate、暂停标志、reduced-motion 偏好。
+  const rafRef = useRef<number | null>(null);
+  const rotationRef = useRef<[number, number, number]>(INITIAL_ROTATION);
+  const pausedRef = useRef(false);
+  const reducedMotionRef = useRef(false);
+
   const hoverRegion =
     summary.regions.find((region) => region.key === hoveredRegion?.regionKey) ?? null;
   const hoverPosition = hoveredRegion
@@ -87,27 +114,131 @@ export function NodeMapView({
     [summary.regions],
   );
 
-  const projectedMap = useMemo(() => {
-    const worldMap = getProjectedWorldMap();
+  // 初始帧几何(SSG 一致,无 JS 即纯静态,水合前与水合后一贯),后续旋转由 imperative 更新覆盖。
+  const initialProjectedMap = useMemo<ProjectedWorldMap>(
+    () => getRotatedMap(INITIAL_ROTATION),
+    [],
+  );
 
-    const countries = worldMap.countries
-      .map((country) => {
-        const activeRegion = activeRegionsByMapName.get(country.name) ?? null;
+  // 国家视图模型:仅初始帧以 React 渲染,派生活跃状态用于 className/aria/hover 绑定。
+  const initialCountriesView = useMemo<CountryView[]>(
+    () =>
+      initialProjectedMap.countries
+        .map((country) => {
+          const activeRegion = activeRegionsByMapName.get(country.name) ?? null;
+          return {
+            ...country,
+            activeRegion,
+            marker: activeRegion ? country.smallRegionMarker : null,
+          };
+        })
+        .filter((country) => country.pathData),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
-        return {
-          ...country,
-          activeRegion,
-          marker: activeRegion ? country.smallRegionMarker : null,
-        };
-      })
-      .filter((country) => country.pathData);
+  /**
+   * 自转循环:每帧停步式更新投影 rotate,直接把新 path d 写入已渲染的 DOM path 节点,
+   * 同时刷新需要 marker 的小国 centroid 坐标。整个循环不调用 setState,因此 177 path
+   * 不会进入 React reconciliation,水合与 hover 逻辑也不被干扰。
+   */
+  useEffect(() => {
+    // 启动前同步读取 prefers-reduced-motion,避免依赖另一个 effect 的执行顺序。
+    // 偏好减少动效时不启动自转循环(保持初始静态正射视角)。
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      reducedMotionRef.current = true;
+      return;
+    }
 
-    return {
-      spherePath: worldMap.spherePath,
-      graticulePath: worldMap.graticulePath,
-      countries,
+    const surface = mapSurfaceRef.current;
+    // SVG 内的国家 path/marker 元素以 data-cname 索引,生命周期稳定。
+    const countryLayer = surface?.querySelector<SVGGElement>("[data-layer='countries']");
+    const markerLayer = surface?.querySelector<SVGGElement>("[data-layer='markers']");
+    if (!countryLayer || !markerLayer) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const tick = () => {
+      if (cancelled) {
+        return;
+      }
+      if (!pausedRef.current) {
+        const r = rotationRef.current;
+        r[0] = (r[0] + ROTATE_DEG_PER_FRAME) % 360;
+        const map = getRotatedMap(r);
+
+        // 更新球体轮廓与经纬网(视觉随转)。
+        surface
+          ?.querySelector<SVGPathElement>("[data-layer='sphere']")
+          ?.setAttribute("d", map.spherePath);
+        surface
+          ?.querySelector<SVGPathElement>("[data-layer='graticule']")
+          ?.setAttribute("d", map.graticulePath);
+
+        // 更新每个国家 path d;同时按 name 取当前几何。
+        // 性能:每帧把 map.countries 转成 name->geo 的 Map,避免对每条 path 做线性 find 造成 O(n²)。
+        const geoByName = new Map<string, (typeof map.countries)[number]>();
+        for (const c of map.countries) {
+          geoByName.set(c.name, c);
+        }
+
+        const pathEls = countryLayer.querySelectorAll<SVGPathElement>("path[data-cname]");
+        const markerEls = markerLayer.querySelectorAll<SVGGElement>("g[data-cname]");
+        for (const pathEl of pathEls) {
+          const next = geoByName.get(pathEl.getAttribute("data-cname") ?? "");
+          if (next) {
+            pathEl.setAttribute("d", next.pathData);
+          }
+        }
+        for (const markerEl of markerEls) {
+          const next = geoByName.get(markerEl.getAttribute("data-cname") ?? "");
+          const halo = markerEl.querySelector<SVGCircleElement>("circle[data-role='halo']");
+          const dot = markerEl.querySelector<SVGCircleElement>("circle[data-role='dot']");
+          if (next?.smallRegionMarker) {
+            if (halo) {
+              halo.setAttribute("cx", String(next.smallRegionMarker.x));
+              halo.setAttribute("cy", String(next.smallRegionMarker.y));
+            }
+            if (dot) {
+              dot.setAttribute("cx", String(next.smallRegionMarker.x));
+              dot.setAttribute("cy", String(next.smallRegionMarker.y));
+            }
+          }
+        }
+      }
+      rafRef.current = window.requestAnimationFrame(tick);
     };
-  }, [activeRegionsByMapName]);
+
+    rafRef.current = window.requestAnimationFrame(tick);
+
+    return () => {
+      cancelled = true;
+      if (rafRef.current !== null) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, []);
+
+  // 尊重 prefers-reduced-motion:用户偏好减少动效时不启动自转。
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) {
+      return;
+    }
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => {
+      reducedMotionRef.current = mq.matches;
+    };
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
 
   const getHoverPosition = useCallback((event: PointerEvent<SVGElement>) => {
     const surfaceRect = mapSurfaceRef.current?.getBoundingClientRect();
@@ -203,6 +334,15 @@ export function NodeMapView({
     };
   }, []);
 
+  // 鼠标进入/离开 surface 暂停或恢复自转,便于用户阅读与点击具体国家;hover 具体国家同样暂停。
+  const handleSurfacePointerEnter = useCallback(() => {
+    pausedRef.current = true;
+  }, []);
+  const handleSurfacePointerLeave = useCallback(() => {
+    pausedRef.current = false;
+    clearHoveredRegion();
+  }, [clearHoveredRegion]);
+
   if (!summary.totalNodes) {
     return (
       <Card className="overflow-hidden rounded-[28px] border-border/70 bg-card/95 shadow-sm">
@@ -282,18 +422,37 @@ export function NodeMapView({
 
       <CardContent className={mapOnly ? "p-0" : "p-5 lg:p-6"}>
         <div className={mapOnly ? "node-map-view__layout node-map-view__layout--map-only" : "node-map-view__layout"}>
-          <div ref={mapSurfaceRef} className="node-map-view__surface">
+          <div
+            ref={mapSurfaceRef}
+            className="node-map-view__surface"
+            data-map-spinning
+            onPointerEnter={handleSurfacePointerEnter}
+            onPointerLeave={handleSurfacePointerLeave}
+          >
             <svg
               viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
               className="node-map-view__svg"
               role="img"
               aria-label={t("mapView.ariaLabel", { defaultValue: "Global node distribution map" })}
             >
-              <path d={projectedMap.spherePath} className="node-map-view__ocean" />
-              <path d={projectedMap.graticulePath} className="node-map-view__graticule" />
+              <defs>
+                <radialGradient
+                  id="node-map-view__ocean-gradient"
+                  cx="42%"
+                  cy="38%"
+                  r="62%"
+                >
+                  <stop offset="0%" stopColor="rgba(226,240,253,0.96)" />
+                  <stop offset="55%" stopColor="rgba(244,248,252,0.9)" />
+                  <stop offset="92%" stopColor="rgba(203,221,237,0.86)" />
+                  <stop offset="100%" stopColor="rgba(180,201,224,0.9)" />
+                </radialGradient>
+              </defs>
+              <path data-layer="sphere" d={initialProjectedMap.spherePath} className="node-map-view__ocean" />
+              <path data-layer="graticule" d={initialProjectedMap.graticulePath} className="node-map-view__graticule" />
 
-              <g className="node-map-view__country-layer">
-                {projectedMap.countries.map((country) => {
+              <g data-layer="countries" className="node-map-view__country-layer">
+                {initialCountriesView.map((country) => {
                   const region = country.activeRegion;
                   const isSelected = hoveredRegion?.regionKey === region?.key;
                   const ariaLabel = region
@@ -311,6 +470,7 @@ export function NodeMapView({
                     <g key={country.name} className="node-map-view__country-group">
                       <path
                         d={country.pathData}
+                        data-cname={country.name}
                         data-country-code={region?.flagCode}
                         data-country-name={country.name}
                         className={`node-map-view__country${region ? ` is-active status-${region.status}` : ""}${isSelected ? " is-selected" : ""}`}
@@ -324,8 +484,8 @@ export function NodeMapView({
                 })}
               </g>
 
-              <g className="node-map-view__marker-layer">
-                {projectedMap.countries
+              <g data-layer="markers" className="node-map-view__marker-layer">
+                {initialCountriesView
                   .filter((country) => country.activeRegion && country.marker)
                   .map((country) => {
                     const region = country.activeRegion;
@@ -348,6 +508,7 @@ export function NodeMapView({
                       <g
                         key={`${country.name}-marker`}
                         className={`node-map-view__marker status-${region.status}${isSelected ? " is-selected" : ""}`}
+                        data-cname={country.name}
                         data-country-code={region.flagCode}
                         data-country-name={country.name}
                         aria-label={ariaLabel}
@@ -359,12 +520,14 @@ export function NodeMapView({
                           cx={marker.x}
                           cy={marker.y}
                           r="9"
+                          data-role="halo"
                           className="node-map-view__marker-halo"
                         />
                         <circle
                           cx={marker.x}
                           cy={marker.y}
                           r="4.2"
+                          data-role="dot"
                           className="node-map-view__marker-dot"
                         />
                       </g>

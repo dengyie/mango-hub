@@ -147,6 +147,42 @@
   fill: rgb(244, 63, 94);
 }
 
+/* 节点脉冲光环:online 持续呼吸扩散,offline 静止。配合正射自转营造"活"的全球分布视感。 */
+@keyframes node-map-view__marker-pulse {
+  0% {
+    r: 9;
+    opacity: 0.72;
+  }
+  70% {
+    r: 18;
+    opacity: 0;
+  }
+  100% {
+    r: 9;
+    opacity: 0;
+  }
+}
+
+.node-map-view__marker-halo {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.node-map-view__marker:not(.is-selected) .node-map-view__marker-halo {
+  animation: node-map-view__marker-pulse 2.4s ease-out infinite;
+}
+
+/* 旋转地球的海洋:正射投影下球体用径向渐变营造立体光照,边缘略暗凸出球感。 */
+.node-map-view__ocean {
+  fill: url(#node-map-view__ocean-gradient);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .node-map-view__marker-halo {
+    animation: none !important;
+  }
+}
+
 .node-map-view__marker:hover .node-map-view__marker-halo,
 .node-map-view__marker.is-selected .node-map-view__marker-halo {
   opacity: 0.88;
