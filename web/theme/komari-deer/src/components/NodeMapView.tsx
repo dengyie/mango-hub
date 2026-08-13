@@ -103,6 +103,11 @@ export function NodeMapView({
   const pausedRef = useRef(false);
   const reducedMotionRef = useRef(false);
 
+  // surface 挂载信号:summary 为空时组件渲染空态卡片(无 surface),mapSurfaceRef 为 null,
+  // 自转 effect 此时跑会因 querySelector 落空而 return 且永不重试(空依赖)。用此 state 在
+  // surface 实际挂载(数据到位、渲染带地图的分支)后触发 effect 重跑,确保 rAF 启动。
+  const [surfaceMounted, setSurfaceMounted] = useState(false);
+
   const hoverRegion =
     summary.regions.find((region) => region.key === hoveredRegion?.regionKey) ?? null;
   const hoverPosition = hoveredRegion
@@ -224,7 +229,7 @@ export function NodeMapView({
         rafRef.current = null;
       }
     };
-  }, []);
+  }, [surfaceMounted]);
 
   // 尊重 prefers-reduced-motion:用户偏好减少动效时不启动自转。
   useEffect(() => {
@@ -423,7 +428,10 @@ export function NodeMapView({
       <CardContent className={mapOnly ? "p-0" : "p-5 lg:p-6"}>
         <div className={mapOnly ? "node-map-view__layout node-map-view__layout--map-only" : "node-map-view__layout"}>
           <div
-            ref={mapSurfaceRef}
+            ref={(node) => {
+              mapSurfaceRef.current = node;
+              setSurfaceMounted(!!node);
+            }}
             className="node-map-view__surface"
             data-map-spinning
             onPointerEnter={handleSurfacePointerEnter}
