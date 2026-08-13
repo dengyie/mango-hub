@@ -71,7 +71,7 @@ runs:
       shell: bash
       run: |
         set -euxo pipefail
-        tar -czf "$RUNNER_TEMP/${{ inputs.artifact-name }}.tar.gz" -C web/public .
+        tar -czf "$RUNNER_TEMP/${{ inputs.artifact-name }}.tar.gz" -C web/public defaultTheme deerTheme
 
     - name: Upload frontend artifact
       if: ${{ inputs.artifact-name != '' }}
