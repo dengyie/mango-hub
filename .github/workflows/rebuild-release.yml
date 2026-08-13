@@ -1,5 +1,11 @@
 name: Rebuild Existing Release
 
+# 前端嵌入语义：build-frontend job 检出本仓默认分支（非 server_ref），故 deer
+# 主题永远来自当前 main 的 vendored 源码——重建 pre-vendor 旧 release tag 时，
+# 二进制的 deer embed 会跟随 main，而非该 tag 当年 git-tracked 的 dist。已接受的
+# trade-off：使 guard 可对 pre-vendor ref（无 vendored 树）继续产出 deer embed。
+# 前端本身由 build-frontend 的 `ref` 输入单独指定（默认分支 komari-web）。
+
 on:
   workflow_dispatch:
     inputs:
@@ -31,6 +37,7 @@ jobs:
     steps:
       - name: Checkout workflow source
         uses: actions/checkout@v4
+        # 默认分支：vendored deer 源码住在这里（server_ref 只影响 build-and-attach-binaries 的 go build）
 
       - name: Build selected frontend artifact
         uses: ./.github/actions/build-frontend
