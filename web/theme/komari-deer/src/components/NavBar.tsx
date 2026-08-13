@@ -19,8 +19,9 @@ const NavBar = () => {
         {/* Logo and Title */}
         <div className="flex items-center gap-2">
           <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-all">
-            <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center shadow-md shadow-primary/20">
-              <span className="text-primary-foreground font-bold text-xl">K</span>
+            <div className="h-8 w-8 rounded-lg flex items-center justify-center overflow-hidden">
+              {/* 品牌 logo：透明 PNG，/assets/logo.png 由品牌资产提供 */}
+              <img src="/assets/logo.png" alt="logo" className="h-8 w-8 object-contain" />
             </div>
             <span className="text-xl md:text-2xl font-bold tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
               {publicInfo?.sitename}
