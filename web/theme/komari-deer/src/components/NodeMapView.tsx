@@ -24,6 +24,10 @@ import "./NodeMapView.css";
 
 /** 自转经度增量(度/帧)。约 0.15°/帧 ≈ 45fps 下每秒 ~6.75°,缓慢可读。 */
 const ROTATE_DEG_PER_FRAME = 0.15;
+// 拖拽灵敏度:每像素对应的旋转度数。0.3°/px → 拖拽 ~1200px 转一圈,手感顺滑且不过快。
+const DRAG_DEG_PER_PX = 0.3;
+// 纬度 clamp:正射投影下 |phi| 超过 90° 会翻转,故限制在 ±60° 保持自然视角。
+const MAX_LATITUDE_DEG = 60;
 
 interface NodeMapViewProps {
   nodes: NodeBasicInfo[];
@@ -102,6 +106,15 @@ export function NodeMapView({
   const rotationRef = useRef<[number, number, number]>(INITIAL_ROTATION);
   const pausedRef = useRef(false);
   const reducedMotionRef = useRef(false);
+  // 拖拽态:active 标记 + pointerdown 时的起始坐标与起始 rotation。
+  // 拖拽中不触发国家 hover(避免卡片抖动);pointerup 后恢复自转。
+  const dragRef = useRef<{
+    active: boolean;
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startRotation: [number, number, number];
+  }>({ active: false, pointerId: -1, startX: 0, startY: 0, startRotation: INITIAL_ROTATION });
 
   // surface 挂载信号:summary 为空时组件渲染空态卡片(无 surface),mapSurfaceRef 为 null,
   // 自转 effect 此时跑会因 querySelector 落空而 return 且永不重试(空依赖)。用此 state 在
@@ -143,13 +156,63 @@ export function NodeMapView({
   );
 
   /**
-   * 自转循环:每帧停步式更新投影 rotate,直接把新 path d 写入已渲染的 DOM path 节点,
-   * 同时刷新需要 marker 的小国 centroid 坐标。整个循环不调用 setState,因此 177 path
-   * 不会进入 React reconciliation,水合与 hover 逻辑也不被干扰。
+   * 共用重投影+DOM 更新:按 rotationRef 当前角度重投影,imperative 写入 sphere/graticule/
+   * 国家 path d/marker 坐标。自转 tick 与拖拽 move 均调用此函数,避免逻辑重复。
+   * 不触发 React rerender(纯 DOM 属性写入)。
+   */
+  const applyRotation = useCallback(() => {
+    const surface = mapSurfaceRef.current;
+    const countryLayer = surface?.querySelector<SVGGElement>("[data-layer='countries']");
+    const markerLayer = surface?.querySelector<SVGGElement>("[data-layer='markers']");
+    if (!surface || !countryLayer || !markerLayer) {
+      return;
+    }
+    const map = getRotatedMap(rotationRef.current);
+
+    surface
+      ?.querySelector<SVGPathElement>("[data-layer='sphere']")
+      ?.setAttribute("d", map.spherePath);
+    surface
+      ?.querySelector<SVGPathElement>("[data-layer='graticule']")
+      ?.setAttribute("d", map.graticulePath);
+
+    const geoByName = new Map<string, (typeof map.countries)[number]>();
+    for (const c of map.countries) {
+      geoByName.set(c.name, c);
+    }
+
+    const pathEls = countryLayer.querySelectorAll<SVGPathElement>("path[data-cname]");
+    const markerEls = markerLayer.querySelectorAll<SVGGElement>("g[data-cname]");
+    for (const pathEl of pathEls) {
+      const next = geoByName.get(pathEl.getAttribute("data-cname") ?? "");
+      if (next) {
+        pathEl.setAttribute("d", next.pathData);
+      }
+    }
+    for (const markerEl of markerEls) {
+      const next = geoByName.get(markerEl.getAttribute("data-cname") ?? "");
+      const halo = markerEl.querySelector<SVGCircleElement>("circle[data-role='halo']");
+      const dot = markerEl.querySelector<SVGCircleElement>("circle[data-role='dot']");
+      if (next?.smallRegionMarker) {
+        if (halo) {
+          halo.setAttribute("cx", String(next.smallRegionMarker.x));
+          halo.setAttribute("cy", String(next.smallRegionMarker.y));
+        }
+        if (dot) {
+          dot.setAttribute("cx", String(next.smallRegionMarker.x));
+          dot.setAttribute("cy", String(next.smallRegionMarker.y));
+        }
+      }
+    }
+  }, []);
+
+  /**
+   * 自转循环:每帧停步式更新投影 rotate,通过 applyRotation 把新 path d 写入已渲染的 DOM。
+   * 整个循环不调用 setState,因此 177 path 不会进入 React reconciliation,水合与 hover 逻辑也不被干扰。
    */
   useEffect(() => {
     // 启动前同步读取 prefers-reduced-motion,避免依赖另一个 effect 的执行顺序。
-    // 偏好减少动效时不启动自转循环(保持初始静态正射视角)。
+    // 偏好减少动效时不启动自转循环(保持初始静态正射视角,但仍允许手动拖拽)。
     if (
       typeof window !== "undefined" &&
       window.matchMedia &&
@@ -160,10 +223,7 @@ export function NodeMapView({
     }
 
     const surface = mapSurfaceRef.current;
-    // SVG 内的国家 path/marker 元素以 data-cname 索引,生命周期稳定。
-    const countryLayer = surface?.querySelector<SVGGElement>("[data-layer='countries']");
-    const markerLayer = surface?.querySelector<SVGGElement>("[data-layer='markers']");
-    if (!countryLayer || !markerLayer) {
+    if (!surface?.querySelector("[data-layer='countries']")) {
       return;
     }
 
@@ -173,49 +233,10 @@ export function NodeMapView({
       if (cancelled) {
         return;
       }
-      if (!pausedRef.current) {
+      if (!pausedRef.current && !dragRef.current.active) {
         const r = rotationRef.current;
         r[0] = (r[0] + ROTATE_DEG_PER_FRAME) % 360;
-        const map = getRotatedMap(r);
-
-        // 更新球体轮廓与经纬网(视觉随转)。
-        surface
-          ?.querySelector<SVGPathElement>("[data-layer='sphere']")
-          ?.setAttribute("d", map.spherePath);
-        surface
-          ?.querySelector<SVGPathElement>("[data-layer='graticule']")
-          ?.setAttribute("d", map.graticulePath);
-
-        // 更新每个国家 path d;同时按 name 取当前几何。
-        // 性能:每帧把 map.countries 转成 name->geo 的 Map,避免对每条 path 做线性 find 造成 O(n²)。
-        const geoByName = new Map<string, (typeof map.countries)[number]>();
-        for (const c of map.countries) {
-          geoByName.set(c.name, c);
-        }
-
-        const pathEls = countryLayer.querySelectorAll<SVGPathElement>("path[data-cname]");
-        const markerEls = markerLayer.querySelectorAll<SVGGElement>("g[data-cname]");
-        for (const pathEl of pathEls) {
-          const next = geoByName.get(pathEl.getAttribute("data-cname") ?? "");
-          if (next) {
-            pathEl.setAttribute("d", next.pathData);
-          }
-        }
-        for (const markerEl of markerEls) {
-          const next = geoByName.get(markerEl.getAttribute("data-cname") ?? "");
-          const halo = markerEl.querySelector<SVGCircleElement>("circle[data-role='halo']");
-          const dot = markerEl.querySelector<SVGCircleElement>("circle[data-role='dot']");
-          if (next?.smallRegionMarker) {
-            if (halo) {
-              halo.setAttribute("cx", String(next.smallRegionMarker.x));
-              halo.setAttribute("cy", String(next.smallRegionMarker.y));
-            }
-            if (dot) {
-              dot.setAttribute("cx", String(next.smallRegionMarker.x));
-              dot.setAttribute("cy", String(next.smallRegionMarker.y));
-            }
-          }
-        }
+        applyRotation();
       }
       rafRef.current = window.requestAnimationFrame(tick);
     };
@@ -229,7 +250,7 @@ export function NodeMapView({
         rafRef.current = null;
       }
     };
-  }, [surfaceMounted]);
+  }, [surfaceMounted, applyRotation]);
 
   // 尊重 prefers-reduced-motion:用户偏好减少动效时不启动自转。
   useEffect(() => {
@@ -341,12 +362,85 @@ export function NodeMapView({
 
   // 鼠标进入/离开 surface 暂停或恢复自转,便于用户阅读与点击具体国家;hover 具体国家同样暂停。
   const handleSurfacePointerEnter = useCallback(() => {
-    pausedRef.current = true;
+    if (!dragRef.current.active) {
+      pausedRef.current = true;
+    }
   }, []);
   const handleSurfacePointerLeave = useCallback(() => {
-    pausedRef.current = false;
-    clearHoveredRegion();
+    if (!dragRef.current.active) {
+      pausedRef.current = false;
+      clearHoveredRegion();
+    }
   }, [clearHoveredRegion]);
+
+  // 拖拽转动地球:pointerdown 记录起点+当前 rotation 并暂停自转;move 按像素 delta 改 rotation
+  // (水平→经度,垂直→纬度 clamp ±60°)并实时重投影;up 恢复自转。拖拽中禁用 hover 避免卡片抖动。
+  // setPointerCapture 保证拖出元素外仍持续追踪 pointer。
+  const handleSurfacePointerDown = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      const surface = mapSurfaceRef.current;
+      if (!surface?.querySelector("[data-layer='countries']")) {
+        return;
+      }
+      dragRef.current = {
+        active: true,
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        startRotation: [...rotationRef.current] as [number, number, number],
+      };
+      pausedRef.current = true;
+      clearHoveredRegion();
+      try {
+        surface.setPointerCapture(event.pointerId);
+      } catch {
+        // 某些浏览器/环境下 setPointerCapture 可能抛异常,忽略不影响拖拽逻辑。
+      }
+    },
+    [clearHoveredRegion],
+  );
+
+  const handleSurfacePointerMove = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      const drag = dragRef.current;
+      if (!drag.active || event.pointerId !== drag.pointerId) {
+        return;
+      }
+      const dx = event.clientX - drag.startX;
+      const dy = event.clientY - drag.startY;
+      const r = rotationRef.current;
+      // 水平拖拽改经度(取模 360 避免数值膨胀);垂直拖拽改纬度并 clamp。
+      r[0] = (drag.startRotation[0] - dx * DRAG_DEG_PER_PX) % 360;
+      const lat = drag.startRotation[1] + dy * DRAG_DEG_PER_PX;
+      r[1] = Math.max(-MAX_LATITUDE_DEG, Math.min(MAX_LATITUDE_DEG, lat));
+      applyRotation();
+    },
+    [applyRotation],
+  );
+
+  const endDrag = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      const drag = dragRef.current;
+      if (!drag.active || event.pointerId !== drag.pointerId) {
+        return;
+      }
+      dragRef.current = {
+        active: false,
+        pointerId: -1,
+        startX: 0,
+        startY: 0,
+        startRotation: rotationRef.current,
+      };
+      try {
+        mapSurfaceRef.current?.releasePointerCapture(event.pointerId);
+      } catch {
+        // 忽略:元素可能已卸载或未捕获该 pointer。
+      }
+      // 恢复自转(reduced-motion 时不自转,但 pausedRef 复位以保持一致性)。
+      pausedRef.current = false;
+    },
+    [],
+  );
 
   if (!summary.totalNodes) {
     return (
@@ -434,8 +528,13 @@ export function NodeMapView({
             }}
             className="node-map-view__surface"
             data-map-spinning
+            style={{ touchAction: "none" }}
             onPointerEnter={handleSurfacePointerEnter}
             onPointerLeave={handleSurfacePointerLeave}
+            onPointerDown={handleSurfacePointerDown}
+            onPointerMove={handleSurfacePointerMove}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
           >
             <svg
               viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
