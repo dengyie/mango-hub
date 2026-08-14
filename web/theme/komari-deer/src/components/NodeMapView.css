@@ -37,7 +37,7 @@
   position: absolute;
   inset: 0;
   z-index: 0;
-  background-image: url(/assets/node-map-view-bg.png);
+  background-image: url(/assets/node-map-view-bg.webp);
   background-size: cover;
   background-position: center;
   pointer-events: none;
