@@ -31,17 +31,11 @@
     0 18px 48px rgba(148, 163, 184, 0.16);
 }
 
-/* 背景图层:接在 surface 底层,不遮挡地球 SVG */
-.node-map-view__surface::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  background-image: url(/assets/node-map-view-bg.webp);
-  background-size: 100% 100%;
-  background-position: 50%;
-  pointer-events: none;
-}
+/*
+  背景图已内嵌到 SVG viewBox 坐标系(NodeMapView.tsx 的 <image> 元素)与地球共享同一
+  缩放变换,不再用 CSS ::before 锚定 surface。这样容器尺寸变化时猫咪与地球不会错位。
+  此 surface 的背景色仅作为图片加载前的回退(浅色)。
+*/
 
 .node-map-view__layout--map-only .node-map-view__surface {
   border-radius: 0.75rem;

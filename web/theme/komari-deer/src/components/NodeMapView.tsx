@@ -567,6 +567,23 @@ export function NodeMapView({
                   <stop offset="100%" stopColor="rgba(180,201,224,0.9)" />
                 </radialGradient>
               </defs>
+              {/*
+                背景图放进 SVG viewBox 坐标系(而非 CSS ::before 锚定 surface):
+                与球、国家、经纬网共享同一坐标系与缩放变换。这样无论容器(浏览器窗口)
+                如何变化,背景中猫咪与地球的相对位置在 viewBox 内恒定 → 屏幕上永不错位。
+                preserveAspectRatio="xMidYMid slice" 保持背景原比例、居中、超界裁剪
+                (不拉伸变形),最小限度裁剪即可覆盖 viewBox(图片 1.777 与 viewBox 1.786 几乎一致)。
+                置于 sphere 之下作为底层(Sphere 海洋层盖在其上)。
+              */}
+              <image
+                href="/assets/node-map-view-bg.webp"
+                x="0"
+                y="0"
+                width="100%"
+                height="100%"
+                preserveAspectRatio="xMidYMid slice"
+                aria-hidden="true"
+              />
               <path data-layer="sphere" d={initialProjectedMap.spherePath} className="node-map-view__ocean" />
               <path data-layer="graticule" d={initialProjectedMap.graticulePath} className="node-map-view__graticule" />
 
