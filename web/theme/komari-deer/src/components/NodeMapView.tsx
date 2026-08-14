@@ -189,17 +189,22 @@ export function NodeMapView({
     }
     for (const markerEl of markerEls) {
       const next = geoByName.get(markerEl.getAttribute("data-cname") ?? "");
+      // 小国 marker 转到球背面时 pathData 为空(被 clipAngle 裁掉),centroid 无有效值:
+      // 此时隐藏 marker,避免残留在最后可见位置产生"孤点";回到正面再显示。
+      if (!next?.smallRegionMarker) {
+        markerEl.style.display = "none";
+        continue;
+      }
+      markerEl.style.display = "";
       const halo = markerEl.querySelector<SVGCircleElement>("circle[data-role='halo']");
       const dot = markerEl.querySelector<SVGCircleElement>("circle[data-role='dot']");
-      if (next?.smallRegionMarker) {
-        if (halo) {
-          halo.setAttribute("cx", String(next.smallRegionMarker.x));
-          halo.setAttribute("cy", String(next.smallRegionMarker.y));
-        }
-        if (dot) {
-          dot.setAttribute("cx", String(next.smallRegionMarker.x));
-          dot.setAttribute("cy", String(next.smallRegionMarker.y));
-        }
+      if (halo) {
+        halo.setAttribute("cx", String(next.smallRegionMarker.x));
+        halo.setAttribute("cy", String(next.smallRegionMarker.y));
+      }
+      if (dot) {
+        dot.setAttribute("cx", String(next.smallRegionMarker.x));
+        dot.setAttribute("cy", String(next.smallRegionMarker.y));
       }
     }
   }, []);
