@@ -26,8 +26,6 @@ import "./NodeMapView.css";
 const ROTATE_DEG_PER_FRAME = 0.15;
 // 拖拽灵敏度:每像素对应的旋转度数。0.3°/px → 拖拽 ~1200px 转一圈,手感顺滑且不过快。
 const DRAG_DEG_PER_PX = 0.3;
-// 纬度 clamp:正射投影下 |phi| 超过 90° 会翻转,故限制在 ±60° 保持自然视角。
-const MAX_LATITUDE_DEG = 60;
 
 interface NodeMapViewProps {
   nodes: NodeBasicInfo[];
@@ -407,12 +405,9 @@ export function NodeMapView({
         return;
       }
       const dx = event.clientX - drag.startX;
-      const dy = event.clientY - drag.startY;
       const r = rotationRef.current;
-      // 水平拖拽改经度(取模 360 避免数值膨胀);垂直拖拽改纬度并 clamp。
+      // 固定轴线:仅水平拖拽改经度(取模 360),纬度恒为 INITIAL_ROTATION 值,避免上下拖拽导致俯仰角乱飘。
       r[0] = (drag.startRotation[0] - dx * DRAG_DEG_PER_PX) % 360;
-      const lat = drag.startRotation[1] + dy * DRAG_DEG_PER_PX;
-      r[1] = Math.max(-MAX_LATITUDE_DEG, Math.min(MAX_LATITUDE_DEG, lat));
       applyRotation();
     },
     [applyRotation],
