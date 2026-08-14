@@ -136,9 +136,7 @@ export function NodeMapView({
     [],
   );
 
-  // 国家视图模型:初始帧所有国家都渲染到 DOM(包括初始视角背面的国家,pathData 为空)。
-  // 背面国家的 path 元素虽不可见但存在,自转/拖拽时 applyRotation 通过 querySelector 找到
-  // 它们并更新 d 属性。若 filter 掉背面国家,自转过来时 DOM 中无对应元素,永远"没加载"。
+  // 国家视图模型:仅初始帧以 React 渲染,派生活跃状态用于 className/aria/hover 绑定。
   const initialCountriesView = useMemo<CountryView[]>(
     () =>
       initialProjectedMap.countries
@@ -149,7 +147,8 @@ export function NodeMapView({
             activeRegion,
             marker: activeRegion ? country.smallRegionMarker : null,
           };
-        }),
+        })
+        .filter((country) => country.pathData),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
@@ -190,22 +189,17 @@ export function NodeMapView({
     }
     for (const markerEl of markerEls) {
       const next = geoByName.get(markerEl.getAttribute("data-cname") ?? "");
-      // 小国 marker 转到球背面时 pathData 为空(被 clipAngle 裁掉),centroid 无有效值:
-      // 此时隐藏 marker,避免残留在最后可见位置产生"孤点";回到正面再显示。
-      if (!next?.smallRegionMarker) {
-        markerEl.style.display = "none";
-        continue;
-      }
-      markerEl.style.display = "";
       const halo = markerEl.querySelector<SVGCircleElement>("circle[data-role='halo']");
       const dot = markerEl.querySelector<SVGCircleElement>("circle[data-role='dot']");
-      if (halo) {
-        halo.setAttribute("cx", String(next.smallRegionMarker.x));
-        halo.setAttribute("cy", String(next.smallRegionMarker.y));
-      }
-      if (dot) {
-        dot.setAttribute("cx", String(next.smallRegionMarker.x));
-        dot.setAttribute("cy", String(next.smallRegionMarker.y));
+      if (next?.smallRegionMarker) {
+        if (halo) {
+          halo.setAttribute("cx", String(next.smallRegionMarker.x));
+          halo.setAttribute("cy", String(next.smallRegionMarker.y));
+        }
+        if (dot) {
+          dot.setAttribute("cx", String(next.smallRegionMarker.x));
+          dot.setAttribute("cy", String(next.smallRegionMarker.y));
+        }
       }
     }
   }, []);
@@ -364,26 +358,15 @@ export function NodeMapView({
     };
   }, []);
 
-  // hover 到具体国家(有 activeRegion 的 path)时暂停自转,便于阅读详情卡;
-  // 离开国家/移出组件后恢复。仅进入组件空白区域不暂停(避免鼠标一进组件就停转)。
-  // 拖拽中(dragRef.active)不干预 pausedRef,避免与拖拽的暂停/恢复逻辑冲突。
-  useEffect(() => {
-    if (dragRef.current.active) {
-      return;
-    }
-    if (hoveredRegion !== null) {
-      pausedRef.current = true;
-    } else {
-      pausedRef.current = false;
-    }
-  }, [hoveredRegion]);
-
-  // 鼠标进入/离开 surface:仅负责清 hover 与拖拽状态;暂停/恢复由 hoveredRegion effect 与拖拽 handler 管理。
+  // 鼠标进入/离开 surface 暂停或恢复自转,便于用户阅读与点击具体国家;hover 具体国家同样暂停。
   const handleSurfacePointerEnter = useCallback(() => {
-    // 不做暂停:只有 hover 到具体国家时才停转(见 hoveredRegion effect)。
+    if (!dragRef.current.active) {
+      pausedRef.current = true;
+    }
   }, []);
   const handleSurfacePointerLeave = useCallback(() => {
     if (!dragRef.current.active) {
+      pausedRef.current = false;
       clearHoveredRegion();
     }
   }, [clearHoveredRegion]);
@@ -567,21 +550,6 @@ export function NodeMapView({
                   <stop offset="100%" stopColor="rgba(180,201,224,0.9)" />
                 </radialGradient>
               </defs>
-              {/* 背景图放进 SVG viewBox 坐标系(而非 CSS ::before 锚定 surface):
-                与球/国家/经纬网共享同一 meet 缩放变换,任何容器尺寸下猫咪与地球
-                相对位置恒定,永不错位。width/height 必须是 viewBox 绝对单位
-                (SVG 内百分比相对 viewport 像素而非 viewBox,会导致 image 再次
-                铺满容器而错位)。xMidYMid slice 保持图片原比例居中裁剪,不拉伸
-                变形(图片 1.777:1 与 viewBox 1.786:1 几乎一致,裁剪极微)。 */}
-              <image
-                href="/assets/node-map-view-bg.webp"
-                x="0"
-                y="0"
-                width={SVG_WIDTH}
-                height={SVG_HEIGHT}
-                preserveAspectRatio="xMidYMid slice"
-                aria-hidden="true"
-              />
               <path data-layer="sphere" d={initialProjectedMap.spherePath} className="node-map-view__ocean" />
               <path data-layer="graticule" d={initialProjectedMap.graticulePath} className="node-map-view__graticule" />
 
