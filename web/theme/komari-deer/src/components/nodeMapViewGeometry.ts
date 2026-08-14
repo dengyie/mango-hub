@@ -1,4 +1,4 @@
-import { geoGraticule10, geoOrthographic, geoPath } from "d3-geo";
+import { geoArea, geoGraticule10, geoOrthographic, geoPath } from "d3-geo";
 import type { GeoProjection } from "d3-geo";
 import { feature } from "topojson-client";
 
@@ -9,11 +9,14 @@ const SVG_HEIGHT = 560;
 const MAP_HORIZONTAL_PADDING = 28;
 const MAP_TOP_PADDING = 42;
 const MAP_BOTTOM_INSET = 42;
-const SMALL_REGION_MARKER_AREA_THRESHOLD = 14;
-const SMALL_REGION_MARKER_SIZE_THRESHOLD = 7;
 
 /** 默认正射投影球面初始半径(像素)。fitExtent 会据此调整最终 scale。 */
 const ORTHOGRAPHIC_INITIAL_SCALE = 260;
+/** 小国 marker 判定的球面面积占比阈值(相对全球 4π):小于该占比的国家画点状 marker。 */
+// 原先用正射投影的屏幕 area/bounds 判定,但 clipAngle(90)+初始视角会把位于球缘/背面的
+// 国家(如初始视角下的法国)裁剪成残余弧线,导致误判为"小国"而画点,且自转时点位置乱飞。
+// 改用 d3 geoArea 球面固有面积(与视角、clipAngle 完全无关),法国 0.1245% 远超阈值不再画点。
+const SMALL_REGION_MARKER_AREA_RATIO_THRESHOLD = 0.0001; // 0.01% 全球球面占比
 /** 初始正向(经度/纬度),0 = 本初子午线朝前。自转启动后从此值开始累加。 */
 // 经度 -120° → 视点中心东经 120°(亚太朝前):初始视角可见中国/日本/韩国/东南亚/澳洲/新西兰,
 // 避免正射投影 clipAngle(90) 把亚太区域全部裁到背面(旧值 -10 面向大西洋,日本/澳洲不可见)。
@@ -83,22 +86,18 @@ function ensureStaticMap(): StaticMapCache {
 
   const pathGenerator = geoPath(projection);
 
-  // 一次性静态判定:needsMarker 基于固定初始视角的 area/bounds,仅用于"该国是否太小需点状 marker"。
-  // 这是国家几何固有属性,与后续 rotate 无关(投影改变不影响"小国家仍是小国家"的判定结论)。
+  // 一次性静态判定:needsMarker 基于国家"固有大小"(球面面积占比,与 rotate/clipAngle 无关)。
+  // 用 d3 geoArea 算球面面积,避免正射投影屏幕 area/bounds 受 clipAngle(90) 裁剪影响:
+  // 若在初始视角球缘/背面的国家(如法国)被裁成弧线,屏幕面积会假性变小而误判为小国画点,
+  // 且该点在自转时位置随机漂移。球面面积是几何固有属性,任何视角结论一致。
   const needsMarker = new Map<string, boolean>();
   for (const country of countriesGeo.features) {
     const name = country.properties?.name ?? String(country.id ?? "unknown");
-    const bounds = pathGenerator.bounds(country as never);
-    const width = bounds[1][0] - bounds[0][0];
-    const height = bounds[1][1] - bounds[0][1];
-    const area = pathGenerator.area(country as never);
-    const [markerX, markerY] = pathGenerator.centroid(country as never);
-    const shouldShowMarker =
-      Number.isFinite(markerX) &&
-      Number.isFinite(markerY) &&
-      (area < SMALL_REGION_MARKER_AREA_THRESHOLD ||
-        Math.max(width, height) < SMALL_REGION_MARKER_SIZE_THRESHOLD);
-    needsMarker.set(name, shouldShowMarker);
+    // geoArea 返回球面固有面积(steradians,与投影/clipAngle/视角完全无关)。
+    // 注意:不能用 pathGenerator.area —— 那是投影平面面积,法国在初始视角被裁成 1.38,
+    // 而 geoArea 是 0.0156。平面面积会随裁剪边缘国家假性变小,导致误判画点。
+    const solidRatio = geoArea(country as never) / (4 * Math.PI);
+    needsMarker.set(name, solidRatio < SMALL_REGION_MARKER_AREA_RATIO_THRESHOLD);
   }
 
   staticMapCache = {
