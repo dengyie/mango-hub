@@ -10,7 +10,7 @@ const StaticShell = () => (
   >
     <div className="flex flex-col items-center gap-4">
       <div className="h-2 w-24 rounded-full bg-cyan-400/60 animate-pulse" />
-      <p className="text-xs font-medium tracking-widest text-white/40">Komari Deer</p>
+      <p className="text-xs font-medium tracking-widest text-white/40">Mango Hub</p>
     </div>
   </div>
 );
