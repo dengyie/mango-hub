@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import Loading from "@/components/loading";
@@ -69,23 +69,31 @@ const MiniPingChart = ({
   const [t] = useTranslation();
   const [cutPeak, setCutPeak] = useState(false);
   const { call } = useRPC2Call();
+  // 是否已成功加载过数据：用来区分「首拉」与「刷新（已有图表展示）」，
+  // 刷新时空窗期不要 overlay loading，避免遮掉既有曲线。
+  const hasDataRef = useRef(false);
   // 间歇性空读:hub 侧 rollup 物化/维护窗口可能瞬时返回 0 条(难以稳定复现)。
   // 一次空响应就当最终结果会让卡片永久卡在 "No ping data",这里有限重试再判死。
   useEffect(() => {
     if (!uuid) return;
 
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
     const fetchRecords = async (attempt: number) => {
       if (cancelled) return;
-      setLoading(true);
-      setError(null);
+      // 只在首轮（未曾成功加载过数据）置 loading/error；重试期与刷新空窗保留既有数据，
+      // 避免遮掉既有曲线、减少多余重渲染。hasDataRef 让 effect 不依赖 remoteData state。
+      if (attempt === 0) {
+        setError(null);
+        if (!hasDataRef.current) setLoading(true);
+      }
       try {
         type RpcResp = { count: number; records: PingRecord[]; tasks?: TaskInfo[] };
         const result = await call<any, RpcResp>("common:getRecords", { uuid, type: "ping", hours });
         if (cancelled) return;
         const records = result?.records || [];
         if (records.length === 0 && attempt < MAX_EMPTY_RETRIES) {
-          setTimeout(() => fetchRecords(attempt + 1), EMPTY_RETRY_DELAY_MS);
+          retryTimer = setTimeout(() => fetchRecords(attempt + 1), EMPTY_RETRY_DELAY_MS);
           return;
         }
         const sorted = [...records].sort(
@@ -93,6 +101,7 @@ const MiniPingChart = ({
         );
         setRemoteData(sorted);
         setTasks(result?.tasks || []);
+        hasDataRef.current = true;
         setLoading(false);
       } catch (err: any) {
         if (cancelled) return;
@@ -103,6 +112,7 @@ const MiniPingChart = ({
     fetchRecords(0);
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
     };
   }, [uuid, hours]);
 
