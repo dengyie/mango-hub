@@ -252,7 +252,7 @@ func backupOnVersionUpgrade() {
 		logger.Errorf("dbcore", "[upgrade-backup] failed to create backup dir: %v", err)
 		return
 	}
-	tsName := time.Now().UTC().Format("20060102-150405")
+	tsName := time.Now().UTC().Format("20060102-150405.000")
 	bakPath := filepath.Join(backupDir, fmt.Sprintf("upgrade-%s.zip", tsName))
 	// 打包 ./data（排除 backup 归档目录本身与 theme-backup：主题历史备份独立存在、
 	// 不受升级/迁移影响，重复打包只会让每个 zip 膨胀 ~260MB）。
@@ -277,23 +277,37 @@ func backupOnVersionUpgrade() {
 // maxUpgradeBackups 是 data/backup 下 upgrade-*.zip 保留的最大份数。
 const maxUpgradeBackups = 3
 
+// maxPreRestoreBackups 是 data/backup 下 pre-restore-*.zip 保留的最大份数。
+// 恢复流程会先把当前数据打包为 pre-restore-*.zip 再执行解压，若不清理同样会无限累积。
+const maxPreRestoreBackups = 3
+
 // pruneUpgradeBackups 删除 backupDir 下除最近 keep 份 upgrade-*.zip 外的所有旧备份。
-// 按文件名（UTC 时间戳，字典序即时间序）排序，保留最新的 keep 份。
 func pruneUpgradeBackups(backupDir string, keep int) error {
-	matches, err := filepath.Glob(filepath.Join(backupDir, "upgrade-*.zip"))
+	return pruneBackupZips(backupDir, "upgrade-*.zip", keep)
+}
+
+// prunePreRestoreBackups 删除 backupDir 下除最近 keep 份 pre-restore-*.zip 外的所有旧备份。
+func prunePreRestoreBackups(backupDir string, keep int) error {
+	return pruneBackupZips(backupDir, "pre-restore-*.zip", keep)
+}
+
+// pruneBackupZips 删除 backupDir 下匹配 pattern 的 zip 中除最近 keep 份外的所有旧文件。
+// 按文件名（UTC 时间戳，定长字典序即时间序）排序，保留最新的 keep 份。
+func pruneBackupZips(backupDir, pattern string, keep int) error {
+	matches, err := filepath.Glob(filepath.Join(backupDir, pattern))
 	if err != nil {
 		return err
 	}
 	if len(matches) <= keep {
 		return nil
 	}
-	// filepath.Glob 返回已按字典序排序；upgrade-YYYYMMDD-HHMMSS 字典序即时间序。
+	// filepath.Glob 返回已按字典序排序；upgrade-YYYYMMDD-HHMMSS.mmm 字典序即时间序。
 	// 保留最后 keep 份（最新），删除其余更旧的。
 	for _, old := range matches[:len(matches)-keep] {
 		if rmErr := os.Remove(old); rmErr != nil {
-			logger.Errorf("dbcore", "[upgrade-backup] failed to remove old backup %s: %v", old, rmErr)
+			logger.Errorf("dbcore", "[backup-prune] failed to remove old backup %s: %v", old, rmErr)
 		} else {
-			logger.Infof("dbcore", "[upgrade-backup] pruned old backup %s", old)
+			logger.Infof("dbcore", "[backup-prune] pruned old backup %s", old)
 		}
 	}
 	return nil
@@ -385,12 +399,19 @@ func doInitialize() error {
 			if err := os.MkdirAll(backupDir, 0755); err != nil {
 				logger.Errorf("dbcore", "[restore] failed to create backup dir: %v", err)
 			} else {
-				tsName := time.Now().UTC().Format("20060102-150405")
+				tsName := time.Now().UTC().Format("20060102-150405.000")
 				bakPath := filepath.Join(backupDir, fmt.Sprintf("pre-restore-%s.zip", tsName))
-				if zipErr := zipDirectoryExcluding("./data", bakPath, map[string]struct{}{backupZipPath: {}, backupDir: {}}); zipErr != nil {
+				// 与升级备份一致：排除 backup 归档目录、backup.zip 自身与 theme-backup（主题历史
+				// 备份独立存在，恢复流程不动它，重复打包只会让 zip 膨胀）。
+				themeBackupDir := filepath.Join(".", "data", "theme-backup")
+				if zipErr := zipDirectoryExcluding("./data", bakPath, map[string]struct{}{backupZipPath: {}, backupDir: {}, themeBackupDir: {}}); zipErr != nil {
 					logger.Errorf("dbcore", "[restore] failed to zip current data: %v", zipErr)
 				} else {
 					logger.Infof("dbcore", "[restore] current data zipped to %s", bakPath)
+					// 保留策略：pre-restore 备份同样只保留最近 N 份，防止恢复流程无限累积。
+					if err := prunePreRestoreBackups(backupDir, maxPreRestoreBackups); err != nil {
+						logger.Errorf("dbcore", "[restore] failed to prune old pre-restore backups: %v", err)
+					}
 				}
 			}
 
