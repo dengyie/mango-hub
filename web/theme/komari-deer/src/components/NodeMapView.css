@@ -31,9 +31,17 @@
     0 18px 48px rgba(148, 163, 184, 0.16);
 }
 
-/* 背景插画已内嵌到 SVG viewBox 坐标系(NodeMapView.tsx 的 <image>, meet 保持
-   原比例完整显示)与球共享同一变换,不再用 CSS ::before 锚定 surface。
-   surface 浅色仅作图片加载前的回退。 */
+/* 背景图层:接在 surface 底层,不遮挡地球 SVG */
+.node-map-view__surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-image: url(/assets/node-map-view-bg.webp);
+  background-size: cover;
+  background-position: center;
+  pointer-events: none;
+}
 
 .node-map-view__layout--map-only .node-map-view__surface {
   border-radius: 0.75rem;
