@@ -136,7 +136,9 @@ export function NodeMapView({
     [],
   );
 
-  // 国家视图模型:仅初始帧以 React 渲染,派生活跃状态用于 className/aria/hover 绑定。
+  // 国家视图模型:初始帧所有国家都渲染到 DOM(包括初始视角背面的国家,pathData 为空)。
+  // 背面国家的 path 元素虽不可见但存在,自转/拖拽时 applyRotation 通过 querySelector 找到
+  // 它们并更新 d 属性。若 filter 掉背面国家,自转过来时 DOM 中无对应元素,永远"没加载"。
   const initialCountriesView = useMemo<CountryView[]>(
     () =>
       initialProjectedMap.countries
@@ -147,8 +149,7 @@ export function NodeMapView({
             activeRegion,
             marker: activeRegion ? country.smallRegionMarker : null,
           };
-        })
-        .filter((country) => country.pathData),
+        }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
