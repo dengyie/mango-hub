@@ -358,15 +358,26 @@ export function NodeMapView({
     };
   }, []);
 
-  // 鼠标进入/离开 surface 暂停或恢复自转,便于用户阅读与点击具体国家;hover 具体国家同样暂停。
-  const handleSurfacePointerEnter = useCallback(() => {
-    if (!dragRef.current.active) {
-      pausedRef.current = true;
+  // hover 到具体国家(有 activeRegion 的 path)时暂停自转,便于阅读详情卡;
+  // 离开国家/移出组件后恢复。仅进入组件空白区域不暂停(避免鼠标一进组件就停转)。
+  // 拖拽中(dragRef.active)不干预 pausedRef,避免与拖拽的暂停/恢复逻辑冲突。
+  useEffect(() => {
+    if (dragRef.current.active) {
+      return;
     }
+    if (hoveredRegion !== null) {
+      pausedRef.current = true;
+    } else {
+      pausedRef.current = false;
+    }
+  }, [hoveredRegion]);
+
+  // 鼠标进入/离开 surface:仅负责清 hover 与拖拽状态;暂停/恢复由 hoveredRegion effect 与拖拽 handler 管理。
+  const handleSurfacePointerEnter = useCallback(() => {
+    // 不做暂停:只有 hover 到具体国家时才停转(见 hoveredRegion effect)。
   }, []);
   const handleSurfacePointerLeave = useCallback(() => {
     if (!dragRef.current.active) {
-      pausedRef.current = false;
       clearHoveredRegion();
     }
   }, [clearHoveredRegion]);
