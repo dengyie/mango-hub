@@ -15,7 +15,9 @@ const SMALL_REGION_MARKER_SIZE_THRESHOLD = 7;
 /** 默认正射投影球面初始半径(像素)。fitExtent 会据此调整最终 scale。 */
 const ORTHOGRAPHIC_INITIAL_SCALE = 260;
 /** 初始正向(经度/纬度),0 = 本初子午线朝前。自转启动后从此值开始累加。 */
-const INITIAL_ROTATION_LAMBDA = -10;
+// 经度 -120° → 视点中心东经 120°(亚太朝前):初始视角可见中国/日本/韩国/东南亚/澳洲/新西兰,
+// 避免正射投影 clipAngle(90) 把亚太区域全部裁到背面(旧值 -10 面向大西洋,日本/澳洲不可见)。
+const INITIAL_ROTATION_LAMBDA = -120;
 const INITIAL_ROTATION_PHI = -15;
 
 type CountryFeature = {
