@@ -550,6 +550,24 @@ export function NodeMapView({
                   <stop offset="100%" stopColor="rgba(180,201,224,0.9)" />
                 </radialGradient>
               </defs>
+              {/* 背景插画(猫咪+地球仪)放进 SVG viewBox 坐标系:
+                与球/国家共享同一 meet 缩放变换,任何窗口尺寸下图片元素与球
+                相对位置恒定。用户实测:背景图里地球仪在 (50%,50%) 居中,
+                球的 fitExtent 也在 (500,280)=50%/50%,两者重合,球正好盖在
+                背景地球仪上,猫在球外不被挡。
+                必须用 meet(保持原比例完整显示,不放大不裁剪)而非 slice:
+                slice 会把图片放大裁剪,使背景元素移位 → 猫被球挡住(此前教训)。
+                图片 1672:941≈1.777 与 viewBox 1000:560≈1.786 几乎一致,
+                meet 下仅 ~0.5% 留白,视觉上几乎完全铺满。 */}
+              <image
+                href="/assets/node-map-view-bg.webp"
+                x="0"
+                y="0"
+                width={SVG_WIDTH}
+                height={SVG_HEIGHT}
+                preserveAspectRatio="xMidYMid meet"
+                aria-hidden="true"
+              />
               <path data-layer="sphere" d={initialProjectedMap.spherePath} className="node-map-view__ocean" />
               <path data-layer="graticule" d={initialProjectedMap.graticulePath} className="node-map-view__graticule" />
 
