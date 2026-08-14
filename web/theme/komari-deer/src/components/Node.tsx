@@ -234,6 +234,37 @@ function CompactPingTimeline({ pingStats, t }: { pingStats: PingStats; t: TFunct
         </span>
       </div>
 
+      {/* HTTP 类型任务按可达性展示,不参与 latency/loss 阈值色条 */}
+      {pingStats.httpReachability.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {pingStats.httpReachability.map((h) => (
+            <span
+              key={h.name}
+              className="inline-flex max-w-[160px] items-center gap-1.5 rounded-full border border-[#2a3a52]/40 bg-[#0d1320]/80 px-2 py-0.5 text-[10px] leading-none text-[#8f98ac]"
+              title={
+                h.up === null
+                  ? t("nodeCard.noPingData")
+                  : h.up
+                    ? t("nodeCard.online")
+                    : t("nodeCard.offline")
+              }
+            >
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 shrink-0 rounded-full",
+                  h.up === null
+                    ? "bg-[#3a4a66]"
+                    : h.up
+                      ? "bg-[#00b875]"
+                      : "bg-[#e64b73]"
+                )}
+              />
+              <span className="truncate">{h.name}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-2">
         <CompactMetricBarStrip
           label="Latency"

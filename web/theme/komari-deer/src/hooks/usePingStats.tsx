@@ -37,6 +37,8 @@ export interface PingStats {
   avgVolatility: number;
   history: PingHistoryPoint[];
   hasData: boolean;
+  /** HTTP 类型任务只按可达性展示，不参与 latency/loss 阈值着色；up=null 表示无采样 */
+  httpReachability: { name: string; up: boolean | null }[];
 }
 
 const HISTORY_BUCKET_COUNT = 28;
@@ -48,11 +50,22 @@ function createEmptyStats(): PingStats {
     avgVolatility: 0,
     history: [],
     hasData: false,
+    httpReachability: [],
   };
 }
 
-function buildPingHistory(records: PingRecord[]): PingHistoryPoint[] {
-  const sortedRecords = records
+function buildPingHistory(
+  records: PingRecord[],
+  icmpTaskIds: Set<number>,
+): PingHistoryPoint[] {
+  // 只统计 ICMP 类型任务:HTTP 可达性任务(如「本站-可达性」)的整页延迟
+  // 结构上就是几百 ms,混进阈值色条会让卡片满屏假红。
+  const icmpRecords = records.filter((record) => icmpTaskIds.has(record.task_id));
+  if (icmpRecords.length === 0) {
+    return [];
+  }
+
+  const sortedRecords = icmpRecords
     .map((record) => ({
       ...record,
       timestamp: new Date(record.time).getTime(),
@@ -124,20 +137,32 @@ export function usePingStats(uuid: string, hours: number = 24): PingStats {
           return;
         }
 
-        const history = buildPingHistory(records);
-        const latencyValues = tasks
+        // 按任务类型分流:ICMP 任务进延迟/丢包统计与阈值色条;HTTP 任务只做可达性。
+        const icmpTaskIds = new Set<number>();
+        const httpTasks: TaskInfo[] = [];
+        for (const task of tasks) {
+          if (task.type === "http") {
+            httpTasks.push(task);
+          } else {
+            icmpTaskIds.add(task.id);
+          }
+        }
+        const icmpTasks = tasks.filter((task) => icmpTaskIds.has(task.id));
+
+        const history = buildPingHistory(records, icmpTaskIds);
+        const latencyValues = icmpTasks
           .map((task) => task.avg ?? task.latest ?? task.value ?? task.p50)
           .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
         const avgLatency = latencyValues.length > 0
           ? latencyValues.reduce((sum, value) => sum + value, 0) / latencyValues.length
           : 0;
 
-        // Calculate average loss from tasks
-        const totalLoss = tasks.reduce((sum, task) => sum + (task.loss || 0), 0);
-        const avgLoss = tasks.length > 0 ? totalLoss / tasks.length : 0;
+        // Calculate average loss from tasks (ICMP only)
+        const totalLoss = icmpTasks.reduce((sum, task) => sum + (task.loss || 0), 0);
+        const avgLoss = icmpTasks.length > 0 ? totalLoss / icmpTasks.length : 0;
 
-        // Calculate volatility (p99/p50 ratio average)
-        const volatilityValues = tasks
+        // Calculate volatility (p99/p50 ratio average, ICMP only)
+        const volatilityValues = icmpTasks
           .filter(task => task.p99_p50_ratio !== undefined && task.p99_p50_ratio > 0)
           .map(task => task.p99_p50_ratio!);
 
@@ -145,12 +170,28 @@ export function usePingStats(uuid: string, hours: number = 24): PingStats {
           ? volatilityValues.reduce((sum, val) => sum + val, 0) / volatilityValues.length
           : 0;
 
+        // HTTP 任务可达性:以该任务最新采样为准(value<0 即不可达);窗口内无采样 = unknown
+        const httpReachability = httpTasks.map((task) => {
+          let up: boolean | null = null;
+          let newestTs = -Infinity;
+          for (const record of records) {
+            if (record.task_id !== task.id) continue;
+            const ts = new Date(record.time).getTime();
+            if (Number.isFinite(ts) && ts > newestTs) {
+              newestTs = ts;
+              up = record.value >= 0;
+            }
+          }
+          return { name: task.name, up };
+        });
+
         setStats({
           avgLatency,
           avgLoss,
           avgVolatility,
           history,
           hasData: true,
+          httpReachability,
         });
       } catch (err) {
         setStats(createEmptyStats());
