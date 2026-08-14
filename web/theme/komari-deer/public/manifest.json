@@ -1,6 +1,6 @@
 {
-  "name": "Komari Monitor",
-  "short_name": "Komari Monitor",
+  "name": "Mango Hub",
+  "short_name": "Mango Hub",
   "description": "A simple server monitor tool",
   "start_url": "/",
   "display": "standalone",

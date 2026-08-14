@@ -1,15 +1,15 @@
 {
-  "name": "Komari Deer",
+  "name": "Mango Hub",
   "short": "komari-deer",
-  "description": "Deer themed Komari Monitor dashboard (node card popover resource curves)",
-  "version": "0.1.20",
+  "description": "Mango Hub server monitoring dashboard (node card popover resource curves)",
+  "version": "0.1.21",
   "author": "dengyie",
-  "url": "https://github.com/dengyie/vps-monitor-host",
+  "url": "https://github.com/dengyie/mango-hub",
   "preview": "preview.png",
   "configuration": {
     "name": "Theme Settings",
     "icon": "Palette",
-    "description": "Komari Deer theme settings",
+    "description": "Mango Hub theme settings",
     "managedFields": [
       {
         "key": "language",

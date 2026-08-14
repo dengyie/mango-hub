@@ -54,11 +54,9 @@ const Footer = () => {
 
         {/* Bottom text */}
         <p className="text-center text-xs text-white/50">
-          <a href="https://github.com/dengyie/vps-monitor-host" target="_blank" rel="noreferrer" className="font-semibold text-white/70 hover:text-cyan-400 transition-colors">Komari Deer</a>
+          <a href="https://github.com/dengyie/mango-hub" target="_blank" rel="noreferrer" className="font-semibold text-white/70 hover:text-cyan-400 transition-colors">Mango Hub</a>
           {' · '}
-          <span>Where monitoring meets elegance</span>
-          {' · '}
-          <span>Built with <a href="https://github.com/tonyliuzj/komari-next" target="_blank" rel="noreferrer" className="text-cyan-400 hover:underline">komari-next</a> & ❤️</span>
+          <span>Every server at a glance</span>
         </p>
       </div>
     </footer>
