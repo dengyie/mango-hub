@@ -254,14 +254,49 @@ func backupOnVersionUpgrade() {
 	}
 	tsName := time.Now().UTC().Format("20060102-150405")
 	bakPath := filepath.Join(backupDir, fmt.Sprintf("upgrade-%s.zip", tsName))
+	// 打包 ./data（排除 backup 归档目录本身与 theme-backup：主题历史备份独立存在、
+	// 不受升级/迁移影响，重复打包只会让每个 zip 膨胀 ~260MB）。
 	backupZipPath := filepath.Join(".", "data", "backup.zip")
-	if zipErr := zipDirectoryExcluding("./data", bakPath, map[string]struct{}{backupZipPath: {}, backupDir: {}}); zipErr != nil {
+	themeBackupDir := filepath.Join(".", "data", "theme-backup")
+	if zipErr := zipDirectoryExcluding("./data", bakPath, map[string]struct{}{backupZipPath: {}, backupDir: {}, themeBackupDir: {}}); zipErr != nil {
 		logger.Errorf("dbcore", "[upgrade-backup] failed to backup ./data before upgrade (from %q to %q): %v", prevVersion, versionID, zipErr)
 		return
 	}
 	logger.Infof("dbcore", "[upgrade-backup] ./data backed up to %s before upgrade (from %q to %q)", bakPath, prevVersion, versionID)
 
+	// 保留策略：升级备份只保留最近 N 份，超出部分按文件名（UTC 时间戳）清理。
+	// 背景：versionID 含构建哈希，每次重新构建部署都会触发一次备份，若不清理
+	// 会无限累积（曾出现一天 6 份、每份 ~290MB 的情况，直接撑爆磁盘）。
+	if err := pruneUpgradeBackups(backupDir, maxUpgradeBackups); err != nil {
+		logger.Errorf("dbcore", "[upgrade-backup] failed to prune old backups: %v", err)
+	}
+
 	writeVersionMarker()
+}
+
+// maxUpgradeBackups 是 data/backup 下 upgrade-*.zip 保留的最大份数。
+const maxUpgradeBackups = 3
+
+// pruneUpgradeBackups 删除 backupDir 下除最近 keep 份 upgrade-*.zip 外的所有旧备份。
+// 按文件名（UTC 时间戳，字典序即时间序）排序，保留最新的 keep 份。
+func pruneUpgradeBackups(backupDir string, keep int) error {
+	matches, err := filepath.Glob(filepath.Join(backupDir, "upgrade-*.zip"))
+	if err != nil {
+		return err
+	}
+	if len(matches) <= keep {
+		return nil
+	}
+	// filepath.Glob 返回已按字典序排序；upgrade-YYYYMMDD-HHMMSS 字典序即时间序。
+	// 保留最后 keep 份（最新），删除其余更旧的。
+	for _, old := range matches[:len(matches)-keep] {
+		if rmErr := os.Remove(old); rmErr != nil {
+			logger.Errorf("dbcore", "[upgrade-backup] failed to remove old backup %s: %v", old, rmErr)
+		} else {
+			logger.Infof("dbcore", "[upgrade-backup] pruned old backup %s", old)
+		}
+	}
+	return nil
 }
 
 // writeVersionMarker 将当前 versionID 写入配置库。
