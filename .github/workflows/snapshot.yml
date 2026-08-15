@@ -41,6 +41,8 @@ jobs:
         uses: ./.github/actions/build-frontend
         with:
           artifact-name: komari-frontend
+          repository: https://github.com/dengyie/komari-web
+          ref: mango-hub-whitelabel
 
   build-and-attach-binaries:
     needs: [prepare, build-frontend]
@@ -163,6 +165,9 @@ jobs:
 
       - name: Build frontend embed artifact
         uses: ./.github/actions/build-frontend
+        with:
+          repository: https://github.com/dengyie/komari-web
+          ref: mango-hub-whitelabel
 
       - name: Set up Go
         uses: actions/setup-go@v5
