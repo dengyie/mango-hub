@@ -307,8 +307,14 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 
 	// 3. SPA 路由 (noRoute)
 	noRoute(func(c *gin.Context) {
-		if c.Request.Method != http.MethodGet {
+		// HEAD 是幂等探活请求(监控/uptime 检测常用),语义同 GET 只返回 200 与响应头,
+		// 不生成 body。net/http 对 HEAD 也会丢弃 body,这里显式只写状态码保持一致。
+		if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead {
 			c.Status(http.StatusNotFound)
+			return
+		}
+		if c.Request.Method == http.MethodHead {
+			c.Status(http.StatusOK)
 			return
 		}
 		//

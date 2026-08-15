@@ -128,3 +128,44 @@ func TestStaticRestrictedDoesNotServeCustomAssetOverride(t *testing.T) {
 		t.Fatal("restricted index still registers a service worker")
 	}
 }
+
+func TestStaticHeadReturnsOK(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Chdir(t.TempDir())
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open config db: %v", err)
+	}
+	config.SetDb(db)
+
+	router := gin.New()
+	Static(router.Group("/"), func(handlers ...gin.HandlerFunc) {
+		router.NoRoute(handlers...)
+	})
+
+	// HEAD / 是探活请求,应返回 200(与 GET 一致),而非 404。
+	request := httptest.NewRequest("HEAD", "/", nil)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+	if recorder.Code != 200 {
+		t.Fatalf("HEAD / status = %d, want 200", recorder.Code)
+	}
+
+	// HEAD 不应返回 body(响应体应为空)。
+	body, err := io.ReadAll(recorder.Result().Body)
+	if err != nil {
+		t.Fatalf("read HEAD / body: %v", err)
+	}
+	if len(body) != 0 {
+		t.Fatalf("HEAD / returned %d body bytes, want 0", len(body))
+	}
+
+	// 非 GET/HEAD 方法(如 POST)仍应 404,不落入 SPA 回退。
+	postRequest := httptest.NewRequest("POST", "/", nil)
+	postRecorder := httptest.NewRecorder()
+	router.ServeHTTP(postRecorder, postRequest)
+	if postRecorder.Code != 404 {
+		t.Fatalf("POST / status = %d, want 404", postRecorder.Code)
+	}
+}
