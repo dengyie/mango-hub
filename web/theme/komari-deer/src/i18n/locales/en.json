@@ -1,7 +1,7 @@
 {
   "about": {
-    "ai": "The development process of the Komari project has been assisted by artificial intelligence tools. These tools are used for tasks such as code generation, refactoring, and debugging to improve development efficiency and code quality. All AI-generated code and suggestions have been reviewed and validated by human developers.",
-    "open_source": "Komari is open source under the MIT license and is built using the following open source software:",
+    "ai": "The development process of the Mango Hub project has been assisted by artificial intelligence tools. These tools are used for tasks such as code generation, refactoring, and debugging to improve development efficiency and code quality. All AI-generated code and suggestions have been reviewed and validated by human developers.",
+    "open_source": "Mango Hub is open source under the MIT license and is built using the following open source software:",
     "open_source_title": "Open Source Software License",
     "readme_open_in_new_tab": "Open in new tab",
     "title": "About"
@@ -104,7 +104,7 @@
     "nodeTable": {
       "addNode": "Add",
       "autoRenewal": "Auto renewal",
-      "autoRenewalDescription": "If the server expires and is currently online, Komari will automatically set the expiration time to the next natural month (year)",
+      "autoRenewalDescription": "If the server expires and is currently online, Mango Hub will automatically set the expiration time to the next natural month (year)",
       "billing": "Billing",
       "billingCycle": "Billing cycle",
       "billingCycleTips": "<b>Billing Cycle Rules</b><br/> <br/> <b>By Preset Cycle (Calendar Renewal)</b><br/> When the number of days entered is close to the preset plan (such as monthly, quarterly, annually), it will renew according to the corresponding <b>calendar cycle</b>.<br/> - Common values: 30 (monthly), 92 (quarterly), 365 (annually), 730 (biennially), etc.<br/> - Example: Entering 30, the service renews on March 15, and the new expiration date will be April 15.<br/> <br/> <b>By Custom Days</b><br/> When other numbers of days are entered (such as 7, 45, 100), it will strictly renew according to the number of days.<br/> - Example: Entering 45, the service renews on March 15, and the new expiration date will be April 29 (45 days later).<br/> <br/> <b>One-time Payment</b><br/> Entering -1 indicates a one-time payment.",
@@ -163,9 +163,9 @@
       "expire_time_description": "Set how many days in advance to start sending reminder notifications before expiration.",
       "expire_title": "Expire notification",
       "login": "Login Notification",
-      "login_description": "Send a notification when a new session logs into Komari.",
+      "login_description": "Send a notification when a new session logs into Mango Hub.",
       "traffic": "Traffic Usage",
-      "traffic_description": "Komari will send notifications when the server reaches the specified percentage of traffic usage, with reminders at 5% increments. If no traffic threshold is set, no notifications will be sent. Set to 0 to disable traffic reminders."
+      "traffic_description": "Mango Hub will send notifications when the server reaches the specified percentage of traffic usage, with reminders at 5% increments. If no traffic threshold is set, no notifications will be sent. Set to 0 to disable traffic reminders."
     }
   },
   "chart": {
@@ -268,7 +268,7 @@
     "name": "Name",
     "none": "None",
     "once": "Once",
-    "private_site": "This is a private Komari site. Please log in first.",
+    "private_site": "This is a private Mango Hub site. Please log in first.",
     "quarterly": "Quarterly",
     "quinquennial": "Quinquennial",
     "real_time": "RealTime",
@@ -335,7 +335,7 @@
     "title": "Log"
   },
   "login": {
-    "desc": "Log in to the Komari control panel.",
+    "desc": "Log in to the Mango Hub control panel.",
     "login_with": "Login with {{provider}}",
     "login_with_github": "Login with GitHub",
     "password": "Password",
@@ -433,7 +433,7 @@
     "can_install": "Can Install",
     "install": "Install",
     "install_prompt_desc": "Add to home screen for quick access",
-    "install_prompt_title": "Install Komari Monitor",
+    "install_prompt_title": "Install Mango Hub",
     "install_status": "Install Status",
     "installed": "Installed",
     "installed_hint": "The app is installed on your device, you can access it quickly from the home screen.",
@@ -524,9 +524,9 @@
     "invalid_number": "Invalid number",
     "missing_required_fields": "Please fill in the required fields: {{fieldNames}}",
     "nezha": {
-      "description": "Compatibility options for Nezha, Komari can only handle basic monitoring and cannot use features like delay detection, remote control, NAT, and internal penetration. Entertainment features, no maintenance plans in the future. (NTR enthusiasts)",
+      "description": "Compatibility options for Nezha, Mango Hub can only handle basic monitoring and cannot use features like delay detection, remote control, NAT, and internal penetration. Entertainment features, no maintenance plans in the future. (NTR enthusiasts)",
       "enabled": "Enable gRpc Port",
-      "enabled_description": "Enable gRpc port, then Nezha Agent can connect to Komari, and Nezha Agent will automatically register. For startup details, please check the logs.",
+      "enabled_description": "Enable gRpc port, then Nezha Agent can connect to Mango Hub, and Nezha Agent will automatically register. For startup details, please check the logs.",
       "listen": "gRpc Listening Address",
       "listen_description": "Listening gRpc address",
       "title": "Nezha"
@@ -559,7 +559,7 @@
       "smtp_receiver": "Receiver Email",
       "smtp_sender": "Sender Email",
       "smtp_ssl": "Enable SSL",
-      "smtp_tips": "Please test whether the server running Komari can send emails first. You can use '{{command}}' to test.",
+      "smtp_tips": "Please test whether the server running Mango Hub can send emails first. You can use '{{command}}' to test.",
       "smtp_title": "SMTP Configuration",
       "smtp_username": "Username",
       "telegram": {
@@ -574,7 +574,7 @@
       "telegram_endpoint": "Endpoint",
       "telegram_title": "Telegram Configuration",
       "template": "Notification template",
-      "template_description": "Komari will send notifications according to the notification template",
+      "template_description": "Mango Hub will send notifications according to the notification template",
       "test_description": "Send a test message",
       "test_title": "Send test message",
       "title": "Notifications"
@@ -586,7 +586,7 @@
       "invalid_preserve_time": "Invalid time",
       "ping_record_preserve_time": "Ping data retention period",
       "record_preserve_time": "Preserve time",
-      "record_preserve_time_description": "Komari will store records for a set number of hours and clean them up upon expiration.",
+      "record_preserve_time_description": "Mango Hub will store records for a set number of hours and clean them up upon expiration.",
       "record_preserve_time_label": "Load data retention period",
       "title": "Record"
     },

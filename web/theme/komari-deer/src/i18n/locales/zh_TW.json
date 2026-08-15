@@ -1,7 +1,7 @@
 {
   "about": {
-    "ai": "Komari 專案的開發過程得到了人工智慧工具的輔助。這些工具被用於執行程式碼生成、重構和除錯等任務，以提高開發效率和程式碼品質。所有由 AI 生成的程式碼和建議都經過了人類開發者的審查與驗證。",
-    "open_source": "Komari 基於 MIT 協議開源，並使用了以下開源軟體構建：",
+    "ai": "Mango Hub 專案的開發過程得到了人工智慧工具的輔助。這些工具被用於執行程式碼生成、重構和除錯等任務，以提高開發效率和程式碼品質。所有由 AI 生成的程式碼和建議都經過了人類開發者的審查與驗證。",
+    "open_source": "Mango Hub 基於 MIT 協議開源，並使用了以下開源軟體構建：",
     "open_source_title": "開源軟體許可協議",
     "readme_open_in_new_tab": "在新標籤頁中打開",
     "title": "關於"
@@ -104,7 +104,7 @@
     "nodeTable": {
       "addNode": "添加節點",
       "autoRenewal": "自動續費",
-      "autoRenewalDescription": "如果伺服器過期且當前在線，Komari 將自動將到期時間設置為下個自然月（年）",
+      "autoRenewalDescription": "如果伺服器過期且當前在線，Mango Hub 將自動將到期時間設置為下個自然月（年）",
       "billing": "帳單",
       "billingCycle": "計費週期",
       "billingCycleTips": "<b>計費週期規則</b><br/> <br/> <b>按預設週期 (日曆續費)</b><br/> 當輸入的天數與預設方案（如月付、季付、年付）的數值相近時，將按對應的 <b>日曆週期</b> 續費。<br/> - 常用數值: 30 (月), 92 (季), 365 (年), 730 (兩年) 等。<br/> - 示例：輸入 30，服務從3月15日續費，新的到期日為 4月15日。<br/> <br/> <b>按自定義天數</b><br/> 當輸入其他天數時（如 7, 45, 100），將嚴格按 天數 續費。<br/> - 示例：輸入 45，服務從3月15日續費，新的到期日為 4月29日 (45天後)。<br/> <br/> <b>一次性付費</b><br/> 輸入 -1 表示一次性付費。",
@@ -158,14 +158,14 @@
     },
     "notification": {
       "expire_enable": "是否啟用過期提醒",
-      "expire_enable_description": "啟用後，Komari將在到期前發送提醒通知。",
+      "expire_enable_description": "啟用後，Mango Hub將在到期前發送提醒通知。",
       "expire_time": "提前多少天開始提醒",
       "expire_time_description": "設置在到期前多少天開始發送提醒通知。",
       "expire_title": "過期提醒",
       "login": "登錄通知",
-      "login_description": "當有新的會話登錄到Komari時，向您發送通知",
+      "login_description": "當有新的會話登錄到Mango Hub時，向您發送通知",
       "traffic": "流量用量",
-      "traffic_description": "Komari將會在伺服器到達指定的流量使用百分比時發送通知，並以5%為梯度持續提醒。如果伺服器沒有設定流量閾值，不發送通知。設定為0禁用流量提醒。"
+      "traffic_description": "Mango Hub將會在伺服器到達指定的流量使用百分比時發送通知，並以5%為梯度持續提醒。如果伺服器沒有設定流量閾值，不發送通知。設定為0禁用流量提醒。"
     }
   },
   "chart": {
@@ -268,7 +268,7 @@
     "name": "名稱",
     "none": "無",
     "once": "一次性",
-    "private_site": "這是一個私有的Komari站點，請先登入。",
+    "private_site": "這是一個私有的Mango Hub站點，請先登入。",
     "quarterly": "季",
     "quinquennial": "五年",
     "real_time": "實時",
@@ -335,7 +335,7 @@
     "title": "日誌"
   },
   "login": {
-    "desc": "登入到 Komari 控制面板。",
+    "desc": "登入到 Mango Hub 控制面板。",
     "login_with": "使用 {{provider}} 登入",
     "login_with_github": "使用 GitHub 登入",
     "password": "密碼",
@@ -433,7 +433,7 @@
     "can_install": "可以安裝",
     "install": "安裝",
     "install_prompt_desc": "添加到主畫面以快速訪問",
-    "install_prompt_title": "安裝 Komari",
+    "install_prompt_title": "安裝 Mango Hub",
     "install_status": "安裝狀態",
     "installed": "已安裝",
     "installed_hint": "該應用程式已安裝在設備上，您可以從主畫面快速訪問它。",
@@ -524,9 +524,9 @@
     "invalid_number": "無效的數字",
     "missing_required_fields": "請填寫必填字段: {{fieldNames}}",
     "nezha": {
-      "description": "哪吒的相容選項，Komari 只能處理基礎的監控，無法使用延遲檢測、遠端控制、NAT和內網穿透等功能。娛樂功能，後續無維護打算。（NTR愛好者）",
+      "description": "哪吒的相容選項，Mango Hub 只能處理基礎的監控，無法使用延遲檢測、遠端控制、NAT和內網穿透等功能。娛樂功能，後續無維護打算。（NTR愛好者）",
       "enabled": "開啟gRpc端口",
-      "enabled_description": "開啟gRpc端口，隨後哪吒 Agent 可以連接到 Komari, Nezha Agent將會自動註冊。啟動詳情請查看日誌。",
+      "enabled_description": "開啟gRpc端口，隨後哪吒 Agent 可以連接到 Mango Hub, Nezha Agent將會自動註冊。啟動詳情請查看日誌。",
       "listen": "gRpc監聽地址",
       "listen_description": "監聽的gRpc地址",
       "title": "哪吒"
@@ -559,7 +559,7 @@
       "smtp_receiver": "收件人郵箱",
       "smtp_sender": "發件人郵箱",
       "smtp_ssl": "啟用 SSL",
-      "smtp_tips": "請先測試運行 Komari 的伺服器 IP 是否能發送郵件，可使用 \"{{command}}\" 進行測試。",
+      "smtp_tips": "請先測試運行 Mango Hub 的伺服器 IP 是否能發送郵件，可使用 \"{{command}}\" 進行測試。",
       "smtp_title": "SMTP 配置",
       "smtp_username": "用戶名",
       "telegram": {
@@ -574,7 +574,7 @@
       "telegram_endpoint": "請求端點",
       "telegram_title": "Telegram 配置",
       "template": "消息通知模板",
-      "template_description": "Komari 將按照消息通知模板發送通知",
+      "template_description": "Mango Hub 將按照消息通知模板發送通知",
       "test_description": "發送測試消息",
       "test_title": "發送測試消息",
       "title": "通知"
@@ -586,7 +586,7 @@
       "invalid_preserve_time": "無效的時間",
       "ping_record_preserve_time": "Ping數據保存時間",
       "record_preserve_time": "保存時間",
-      "record_preserve_time_description": "Komari將會按照設定的小時數保存記錄，過期清理",
+      "record_preserve_time_description": "Mango Hub將會按照設定的小時數保存記錄，過期清理",
       "record_preserve_time_label": "負載數據保存時間",
       "title": "歷史記錄"
     },
