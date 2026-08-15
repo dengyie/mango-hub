@@ -330,6 +330,10 @@ export function NodeMapView({
         ...position,
       });
       queueHoverPosition(position);
+      // 显示国家信息卡片时暂停自转,便于阅读;移开(clearHoveredRegion)后恢复。
+      if (!dragRef.current.active) {
+        pausedRef.current = true;
+      }
     },
     [getHoverPosition, queueHoverPosition],
   );
@@ -345,6 +349,11 @@ export function NodeMapView({
     setHoveredRegion(null);
     pendingHoverPositionRef.current = null;
 
+    // 卡片消失后恢复自转(拖拽中不恢复,pointerdown 已暂停,由 endDrag 恢复)。
+    if (!dragRef.current.active) {
+      pausedRef.current = false;
+    }
+
     if (hoverFrameRef.current !== null) {
       window.cancelAnimationFrame(hoverFrameRef.current);
       hoverFrameRef.current = null;
@@ -359,15 +368,11 @@ export function NodeMapView({
     };
   }, []);
 
-  // 鼠标进入/离开 surface 暂停或恢复自转,便于用户阅读与点击具体国家;hover 具体国家同样暂停。
-  const handleSurfacePointerEnter = useCallback(() => {
-    if (!dragRef.current.active) {
-      pausedRef.current = true;
-    }
-  }, []);
+  // 鼠标进入/离开 surface 不暂停自转(保持持续转动,与拖动/信息卡分开控制);
+  // 仅当 hover 具体国家显示信息卡(updateHoveredRegion)或拖拽时才暂停。
+  const handleSurfacePointerEnter = useCallback(() => {}, []);
   const handleSurfacePointerLeave = useCallback(() => {
     if (!dragRef.current.active) {
-      pausedRef.current = false;
       clearHoveredRegion();
     }
   }, [clearHoveredRegion]);
