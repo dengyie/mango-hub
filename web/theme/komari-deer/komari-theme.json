@@ -2,7 +2,7 @@
   "name": "Mango Hub",
   "short": "komari-deer",
   "description": "Mango Hub server monitoring dashboard (node card popover resource curves)",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "author": "dengyie",
   "url": "https://github.com/dengyie/mango-hub",
   "preview": "preview.png",

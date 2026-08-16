@@ -216,7 +216,7 @@ function CompactPingTimeline({ pingStats, t }: { pingStats: PingStats; t: TFunct
   if (!pingStats.hasData) {
     return (
       <div className="flex h-[62px] items-center justify-between text-[12px] select-none">
-        <span className="font-medium text-[#8f98ac]">Ping Stats (24h)</span>
+        <span className="font-medium text-[#8f98ac]">Ping Stats (1h)</span>
         <span className="text-[12px] italic text-[#848da3]">{t("nodeCard.noPingData")}</span>
       </div>
     );
@@ -228,7 +228,7 @@ function CompactPingTimeline({ pingStats, t }: { pingStats: PingStats; t: TFunct
   return (
     <div className="space-y-2 select-none">
       <div className="flex items-center justify-between gap-2 text-[12px] leading-none">
-        <span className="font-medium text-[#8f98ac]">Ping Stats (24h)</span>
+        <span className="font-medium text-[#8f98ac]">Ping Stats (1h)</span>
         <span className="shrink-0 font-mono text-[10px] font-semibold text-[#9aa3b7]">
           {pingStats.avgVolatility.toFixed(1)} Vol
         </span>
