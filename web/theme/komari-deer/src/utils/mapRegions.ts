@@ -100,8 +100,9 @@ function resolveRegionMeta(region: string): RegionMeta | null {
   };
 }
 
-export function buildMapViewSummary(nodes: NodeBasicInfo[], liveData: LiveData): MapViewSummary {
-  const onlineSet = new Set(liveData?.online ?? []);
+export function buildMapViewSummary(nodes: NodeBasicInfo[], liveData?: LiveData | null): MapViewSummary {
+  const hasLiveStatus = Boolean(liveData);
+  const onlineSet = hasLiveStatus ? new Set(liveData?.online ?? []) : null;
   const regionMap = new Map<string, MapRegionSummary>();
   const unmappedNodes: NodeBasicInfo[] = [];
 
@@ -113,12 +114,13 @@ export function buildMapViewSummary(nodes: NodeBasicInfo[], liveData: LiveData):
       continue;
     }
 
+    const isNodeOnline = onlineSet ? onlineSet.has(node.uuid) : true;
     const existing = regionMap.get(regionMeta.key);
 
     if (existing) {
       existing.nodes.push(node);
       existing.total += 1;
-      if (onlineSet.has(node.uuid)) {
+      if (isNodeOnline) {
         existing.online += 1;
       } else {
         existing.offline += 1;
@@ -134,9 +136,9 @@ export function buildMapViewSummary(nodes: NodeBasicInfo[], liveData: LiveData):
       mapName: regionMeta.mapName,
       flagCode: regionMeta.flagCode,
       total: 1,
-      online: onlineSet.has(node.uuid) ? 1 : 0,
-      offline: onlineSet.has(node.uuid) ? 0 : 1,
-      status: onlineSet.has(node.uuid) ? "online" : "offline",
+      online: isNodeOnline ? 1 : 0,
+      offline: isNodeOnline ? 0 : 1,
+      status: isNodeOnline ? "online" : "offline",
       nodes: [node],
     });
   }
@@ -153,7 +155,7 @@ export function buildMapViewSummary(nodes: NodeBasicInfo[], liveData: LiveData):
     return left.label.localeCompare(right.label);
   });
 
-  const onlineNodes = nodes.filter((node) => onlineSet.has(node.uuid)).length;
+  const onlineNodes = nodes.filter((node) => (onlineSet ? onlineSet.has(node.uuid) : true)).length;
   const offlineNodes = nodes.length - onlineNodes;
 
   return {

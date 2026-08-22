@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 
 interface NodeDisplayProps {
   nodes: NodeBasicInfo[];
-  liveData: LiveData;
+  liveData?: LiveData | null;
 }
 
 const NodeDisplay: React.FC<NodeDisplayProps> = ({ nodes, liveData }) => {
@@ -91,7 +91,7 @@ const NodeDisplay: React.FC<NodeDisplayProps> = ({ nodes, liveData }) => {
         !isNaN(Number(term)) && node.price.toString().includes(term);
 
       // 状态搜索
-      const isOnline = liveData?.online?.includes(node.uuid) || false;
+      const isOnline = liveData ? liveData.online?.includes(node.uuid) || false : true;
       const statusMatch =
         ((term === "online" || term === "在线") && isOnline) ||
         ((term === "offline" || term === "离线") && !isOnline);
@@ -198,16 +198,20 @@ const NodeDisplay: React.FC<NodeDisplayProps> = ({ nodes, liveData }) => {
               {selectedGroup === "all"
                 ? t("nodeCard.totalNodes", {
                     total: nodes.length,
-                    online: liveData?.online?.length || 0,
-                    defaultValue: `${liveData?.online?.length || 0} Online / ${nodes.length} Total`,
+                    online: liveData ? liveData.online?.length || 0 : nodes.length,
+                    defaultValue: `${liveData ? liveData.online?.length || 0 : nodes.length} Online / ${nodes.length} Total`,
                   })
                 : t("nodeCard.groupNodes", {
                     group: selectedGroup,
                     total: filteredNodes.length,
-                    online: filteredNodes.filter((n) =>
-                      liveData?.online?.includes(n.uuid)
-                    ).length,
-                    defaultValue: `${filteredNodes.filter((n) => liveData?.online?.includes(n.uuid)).length} Online in ${selectedGroup}`,
+                    online: liveData
+                      ? filteredNodes.filter((n) => liveData.online?.includes(n.uuid)).length
+                      : filteredNodes.length,
+                    defaultValue: `${
+                      liveData
+                        ? filteredNodes.filter((n) => liveData.online?.includes(n.uuid)).length
+                        : filteredNodes.length
+                    } Online in ${selectedGroup}`,
                   })}
             </span>
           )}

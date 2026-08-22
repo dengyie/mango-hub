@@ -29,7 +29,7 @@ const DRAG_DEG_PER_PX = 0.3;
 
 interface NodeMapViewProps {
   nodes: NodeBasicInfo[];
-  liveData: LiveData;
+  liveData?: LiveData | null;
   mapOnly?: boolean;
 }
 

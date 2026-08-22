@@ -71,14 +71,14 @@ export default function DashboardContent() {
 
       <MemoNodeMapView
         nodes={nodeList ?? []}
-        liveData={live_data?.data ?? { online: [], data: {} }}
+        liveData={live_data?.data ?? null}
         mapOnly
       />
 
       <Suspense fallback={<div className="p-4">{t("nodes.loading", { defaultValue: "Loading nodes..." })}</div>}>
         <MemoNodeDisplay
           nodes={nodeList ?? []}
-          liveData={live_data?.data ?? { online: [], data: {} }}
+          liveData={live_data?.data ?? null}
         />
       </Suspense>
     </div>

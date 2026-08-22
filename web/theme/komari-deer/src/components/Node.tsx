@@ -538,15 +538,16 @@ export default Node;
 
 type NodeGridProps = {
   nodes: NodeBasicInfo[];
-  liveData: LiveData;
+  liveData?: LiveData | null;
 };
 
 export const NodeGrid = ({ nodes, liveData }: NodeGridProps) => {
+  const hasLive = Boolean(liveData);
   const onlineNodes = liveData && liveData.online ? liveData.online : [];
 
   const sortedNodes = [...nodes].sort((a, b) => {
-    const aOnline = onlineNodes.includes(a.uuid);
-    const bOnline = onlineNodes.includes(b.uuid);
+    const aOnline = hasLive ? onlineNodes.includes(a.uuid) : true;
+    const bOnline = hasLive ? onlineNodes.includes(b.uuid) : true;
 
     if (aOnline !== bOnline) {
       return aOnline ? -1 : 1;
@@ -563,7 +564,7 @@ export const NodeGrid = ({ nodes, liveData }: NodeGridProps) => {
       }}
     >
       {sortedNodes.map((node) => {
-        const isOnline = onlineNodes.includes(node.uuid);
+        const isOnline = hasLive ? onlineNodes.includes(node.uuid) : true;
         const nodeData =
           liveData && liveData.data ? liveData.data[node.uuid] : undefined;
 

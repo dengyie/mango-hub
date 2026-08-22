@@ -44,7 +44,7 @@ const MiniPingChart = dynamic(() => import("./MiniPingChart"), {
 
 interface NodeTableProps {
   nodes: NodeBasicInfo[];
-  liveData: LiveData;
+  liveData?: LiveData | null;
 }
 
 type SortField = 'name' | 'os' | 'status' | 'cpu' | 'ram' | 'disk' | 'price' | 'networkUp' | 'networkDown' | 'totalUp' | 'totalDown';
@@ -94,6 +94,7 @@ const NodeTable: React.FC<NodeTableProps> = ({ nodes, liveData }) => {
     return sortState.order === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />;
   };
 
+  const hasLive = Boolean(liveData);
   const onlineNodes = liveData && liveData.online ? liveData.online : [];
 
   const getNodeData = (uuid: string): Record => {
@@ -111,8 +112,8 @@ const NodeTable: React.FC<NodeTableProps> = ({ nodes, liveData }) => {
   };
 
   const sortedNodes = [...nodes].sort((a, b) => {
-    const aOnline = onlineNodes.includes(a.uuid);
-    const bOnline = onlineNodes.includes(b.uuid);
+    const aOnline = hasLive ? onlineNodes.includes(a.uuid) : true;
+    const bOnline = hasLive ? onlineNodes.includes(b.uuid) : true;
     const aData = getNodeData(a.uuid);
     const bData = getNodeData(b.uuid);
 
@@ -275,7 +276,7 @@ const NodeTable: React.FC<NodeTableProps> = ({ nodes, liveData }) => {
           </TableHeader>
         <TableBody>
           {sortedNodes.map((node) => {
-            const isOnline = onlineNodes.includes(node.uuid);
+            const isOnline = hasLive ? onlineNodes.includes(node.uuid) : true;
             const nodeData = getNodeData(node.uuid);
             const isExpanded = expandedRows.has(node.uuid);
 
