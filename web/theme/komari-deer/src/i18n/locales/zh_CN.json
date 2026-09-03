@@ -910,5 +910,14 @@
     "mode": "显示模式"
   },
   "warn_https": "当前连接不是 HTTPS！您的敏感数据存在严重风险。请立即采取措施确保连接安全！复制操作可能无法使用！",
-  "warn_websocket": "RPC2 请求失败，请检查网络连接或服务器状态！"
+  "warn_websocket": "RPC2 请求失败，请检查网络连接或服务器状态！",
+  "quota": {
+    "title": "CNB AI 额度",
+    "used": "已用",
+    "total": "总量",
+    "remaining": "剩余",
+    "dev_cores": "开发核时",
+    "stale": "数据同步中断",
+    "unavailable": "暂无数据"
+  }
 }

@@ -910,5 +910,14 @@
       "stale": "Exchange rates are not the latest",
       "updatedAt": "Exchange rates updated at {{value}}"
     }
+  },
+  "quota": {
+    "title": "CNB AI Quota",
+    "used": "Used",
+    "total": "Total",
+    "remaining": "Remaining",
+    "dev_cores": "Dev core-hours",
+    "stale": "Sync interrupted",
+    "unavailable": "No data"
   }
 }

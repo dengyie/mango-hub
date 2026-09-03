@@ -910,5 +910,14 @@
       "stale": "匯率非最新",
       "updatedAt": "匯率更新時間 {{value}}"
     }
+  },
+  "quota": {
+    "title": "CNB AI 額度",
+    "used": "已用",
+    "total": "總量",
+    "remaining": "剩餘",
+    "dev_cores": "開發核時",
+    "stale": "資料同步中斷",
+    "unavailable": "暫無資料"
   }
 }
