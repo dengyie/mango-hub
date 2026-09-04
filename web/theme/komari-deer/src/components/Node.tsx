@@ -1,4 +1,3 @@
-import React from "react";
 import { useTranslation } from "react-i18next";
 import { Activity, TrendingUp } from "lucide-react";
 import type { TFunction } from "i18next";

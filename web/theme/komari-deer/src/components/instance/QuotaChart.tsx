@@ -3,23 +3,23 @@
 import { useTranslation } from "react-i18next";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { useCnbQuota } from "@/components/CnbQuotaCard";
+import { useCnbQuota } from "@/hooks/useCnbQuota";
+import {
+  clampPercent,
+  formatCoreHours,
+  formatCredits,
+  formatPercent,
+  quotaPercent,
+  toneBarClass,
+  toneTextClass,
+} from "@/utils/quotaHelper";
 
 /**
  * CNB AI 额度卡（LoadChart embedded 弹窗专属）：
  * 消费 hk /ops/quota 公开 JSON（CNB cron 流水线每 5 分钟同步），展示
  * AI Credits 已用/剩余/总量 + 开发核时 + CI 核时进度条。
+ * 百分比/格式化/阈值逻辑在 utils/quotaHelper.ts（纯函数，tests/quotaFormat.test.mjs 覆盖）。
  */
-
-function formatCredits(milli: number | null | undefined): string {
-  if (milli == null || !Number.isFinite(milli)) return "-";
-  return (milli / 1000).toLocaleString(undefined, { maximumFractionDigits: 2 });
-}
-
-function formatCoreHours(seconds: number | null | undefined): string {
-  if (seconds == null || !Number.isFinite(seconds)) return "-";
-  return `${(seconds / 3600).toLocaleString(undefined, { maximumFractionDigits: 1 })}h`;
-}
 
 const QuotaChart = () => {
   const { t } = useTranslation();
@@ -27,36 +27,34 @@ const QuotaChart = () => {
 
   const total = quota?.credit_total_milli ?? null;
   const used = quota?.credit_used_milli ?? null;
-  const creditPercent =
-    total && used != null && total > 0 ? (used / total) * 100 : null;
-  const devPercent =
-    quota?.dev_total_sec && quota.dev_total_sec > 0 && quota.dev_used_sec != null
-      ? (quota.dev_used_sec / quota.dev_total_sec) * 100
-      : null;
-  const ciPercent =
-    quota?.dev_total_sec != null &&
-    quota.dev_total_sec > 0 &&
-    quota.ci_used_sec != null
-      ? ((quota.ci_used_sec / 576000) * 100)
-      : null;
+  const creditPercent = quotaPercent(used, total);
+  // CI 与 dev 共享同一免费核时池，后端 ci_total_sec 与 dev_total_sec 同源；
+  // 独立守卫：总量缺失时只显示用量、不渲染进度条
+  const devPercent = quotaPercent(quota?.dev_used_sec, quota?.dev_total_sec);
+  const ciPercent = quotaPercent(quota?.ci_used_sec, quota?.ci_total_sec);
 
-  const toneClass = (p: number | null) =>
-    p == null
-      ? "text-foreground"
-      : p >= 90
-        ? "text-red-400"
-        : p >= 75
-          ? "text-amber-400"
-          : "text-foreground";
-
-  const barColor = (p: number | null) =>
-    p == null
-      ? "bg-primary"
-      : p >= 90
-        ? "bg-red-400"
-        : p >= 75
-          ? "bg-amber-400"
-          : "bg-primary";
+  const rows: {
+    label: string;
+    percent: number | null;
+    value: string;
+    detail?: string;
+  }[] = [
+    {
+      label: t("quota.used", { defaultValue: "Used" }),
+      percent: creditPercent,
+      value: formatPercent(creditPercent),
+    },
+    {
+      label: t("quota.dev_cores", { defaultValue: "Dev core-hours" }),
+      percent: devPercent,
+      value: `${formatCoreHours(quota?.dev_used_sec)} / ${formatCoreHours(quota?.dev_total_sec)}`,
+    },
+    {
+      label: t("quota.ci_cores", { defaultValue: "CI core-hours" }),
+      percent: ciPercent,
+      value: `${formatCoreHours(quota?.ci_used_sec)}${ciPercent != null ? ` / ${formatCoreHours(quota?.ci_total_sec)}` : ""}`,
+    },
+  ];
 
   return (
     <Card className="w-full max-w-full min-w-0 flex flex-col h-full gap-4">
@@ -99,70 +97,41 @@ const QuotaChart = () => {
 
         {quota && total != null ? (
           <div className="flex flex-col gap-4">
-            {/* AI Credits 进度条 */}
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{t("quota.used", { defaultValue: "Used" })}</span>
-                <span className={toneClass(creditPercent)}>
-                  {creditPercent != null
-                    ? creditPercent >= 0.01
-                      ? `${creditPercent.toFixed(2)}%`
-                      : creditPercent > 0
-                        ? "<0.01%"
-                        : "0%"
-                    : "-"}
-                </span>
+            {rows.map((row) => (
+              <div key={row.label} className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{row.label}</span>
+                  <span className={toneTextClass(row.percent)}>{row.value}</span>
+                </div>
+                {row.percent != null && (
+                  <Progress
+                    value={clampPercent(row.percent)}
+                    className="h-2"
+                    indicatorClassName={toneBarClass(row.percent)}
+                  />
+                )}
+                {row.detail != null && (
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span>{row.detail}</span>
+                  </div>
+                )}
               </div>
-              <Progress
-                value={creditPercent ?? 0}
-                className="h-2"
-                indicatorClassName={barColor(creditPercent)}
-              />
-              <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                <span>
-                  {t("quota.remaining", { defaultValue: "Remaining" })}:{" "}
-                  <span className="text-foreground font-medium">
-                    {formatCredits(total != null && used != null ? total - used : null)}
-                  </span>
+            ))}
+            <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+              <span>
+                {t("quota.remaining", { defaultValue: "Remaining" })}:{" "}
+                <span className="text-foreground font-medium">
+                  {formatCredits(
+                    total != null && used != null ? total - used : null
+                  )}
                 </span>
-                <span>
-                  {t("quota.total", { defaultValue: "Total" })}:{" "}
-                  <span className="text-foreground font-medium">
-                    {formatCredits(total)}
-                  </span>
+              </span>
+              <span>
+                {t("quota.total", { defaultValue: "Total" })}:{" "}
+                <span className="text-foreground font-medium">
+                  {formatCredits(total)}
                 </span>
-              </div>
-            </div>
-
-            {/* 开发核时 */}
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{t("quota.dev_cores", { defaultValue: "Dev core-hours" })}</span>
-                <span className={toneClass(devPercent)}>
-                  {formatCoreHours(quota.dev_used_sec)} /{" "}
-                  {formatCoreHours(quota.dev_total_sec)}
-                </span>
-              </div>
-              <Progress
-                value={devPercent ?? 0}
-                className="h-2"
-                indicatorClassName={barColor(devPercent)}
-              />
-            </div>
-
-            {/* CI 核时 */}
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{t("quota.ci_cores", { defaultValue: "CI core-hours" })}</span>
-                <span className={toneClass(ciPercent)}>
-                  {formatCoreHours(quota.ci_used_sec)}
-                </span>
-              </div>
-              <Progress
-                value={ciPercent ?? 0}
-                className="h-2"
-                indicatorClassName={barColor(ciPercent)}
-              />
+              </span>
             </div>
           </div>
         ) : (
