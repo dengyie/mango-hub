@@ -918,6 +918,8 @@
     "remaining": "剩餘",
     "dev_cores": "開發核時",
     "stale": "資料同步中斷",
-    "unavailable": "暫無資料"
+    "unavailable": "暫無資料",
+    "synced": "每5分鐘同步",
+    "loading": "載入中..."
   }
 }

@@ -10,7 +10,6 @@ import { usePublicInfo } from "@/contexts/PublicInfoContext";
 import { preloadAll } from "@/lib/historyCache";
 import DashboardSkeleton from "@/components/DashboardSkeleton";
 import { Callouts } from "@/components/DashboardCallouts";
-import { CnbQuotaCard } from "@/components/CnbQuotaCard";
 import { NodeMapView } from "@/components/NodeMapView";
 
 const MemoNodeMapView = React.memo(NodeMapView);
@@ -63,8 +62,6 @@ export default function DashboardContent() {
   return (
     <div className="container mx-auto px-4 space-y-4">
       <Callouts />
-
-      <CnbQuotaCard />
 
       {error && nodeList ? (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">

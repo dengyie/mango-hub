@@ -918,6 +918,8 @@
     "remaining": "Remaining",
     "dev_cores": "Dev core-hours",
     "stale": "Sync interrupted",
-    "unavailable": "No data"
+    "unavailable": "No data",
+    "synced": "Synced every 5 min",
+    "loading": "Loading..."
   }
 }

@@ -17,6 +17,7 @@ import PriceTags from "./PriceTags";
 import CircleChart from "./CircleChart";
 import LoadChartFloat from "./LoadChartFloat";
 import Tips from "./ui/tips";
+import { CnbQuotaNodeCard } from "./CnbQuotaCard";
 
 /** Format seconds into readable uptime */
 export function formatUptime(seconds: number, t: TFunction): string {
@@ -569,12 +570,14 @@ export const NodeGrid = ({ nodes, liveData }: NodeGridProps) => {
           liveData && liveData.data ? liveData.data[node.uuid] : undefined;
 
         return (
-          <Node
-            key={node.uuid}
-            basic={node}
-            live={nodeData}
-            online={isOnline}
-          />
+          <React.Fragment key={node.uuid}>
+            {node === sortedNodes[0] && <CnbQuotaNodeCard />}
+            <Node
+              basic={node}
+              live={nodeData}
+              online={isOnline}
+            />
+          </React.Fragment>
         );
       })}
     </div>
