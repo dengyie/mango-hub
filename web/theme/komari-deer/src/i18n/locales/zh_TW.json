@@ -920,6 +920,8 @@
     "stale": "資料同步中斷",
     "unavailable": "暫無資料",
     "synced": "每5分鐘同步",
-    "loading": "載入中..."
+    "loading": "載入中...",
+    "updated_at": "更新時間",
+    "ci_cores": "CI 核時"
   }
 }

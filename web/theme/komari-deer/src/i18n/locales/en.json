@@ -920,6 +920,8 @@
     "stale": "Sync interrupted",
     "unavailable": "No data",
     "synced": "Synced every 5 min",
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "updated_at": "Updated",
+    "ci_cores": "CI core-hours"
   }
 }

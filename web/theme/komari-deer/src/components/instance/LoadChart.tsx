@@ -25,6 +25,11 @@ import {
 import { usePublicInfo } from "@/contexts/PublicInfoContext";
 import Loading from "@/components/loading";
 import { useHistory } from "@/lib/useHistory";
+import dynamic from "next/dynamic";
+
+const QuotaChart = dynamic(() => import("@/components/instance/QuotaChart"), {
+  ssr: false,
+});
 
 type LoadChartProps = {
   uuid: string;
@@ -666,6 +671,7 @@ const LoadChart = ({ uuid, data = [], embedded = false }: LoadChartProps) => {
           )}
           </CardContent>
         </Card>
+        {embedded && <QuotaChart />}
         {!embedded && (
           <>
         {/* Connections */}
