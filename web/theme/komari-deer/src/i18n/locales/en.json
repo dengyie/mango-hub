@@ -923,5 +923,13 @@
     "loading": "Loading...",
     "updated_at": "Updated",
     "ci_cores": "CI core-hours"
+  },
+  "usage": {
+    "title": "Token Usage",
+    "today": "Today (UTC+8)",
+    "cumulative": "Cumulative",
+    "requests": "Requests",
+    "errors": "Errors",
+    "trend": "Last 7 days"
   }
 }

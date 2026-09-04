@@ -923,5 +923,13 @@
     "loading": "加载中...",
     "updated_at": "更新时间",
     "ci_cores": "CI 核时"
+  },
+  "usage": {
+    "title": "Token 用量",
+    "today": "今日 (UTC+8)",
+    "cumulative": "累计",
+    "requests": "请求数",
+    "errors": "错误",
+    "trend": "近 7 日"
   }
 }
