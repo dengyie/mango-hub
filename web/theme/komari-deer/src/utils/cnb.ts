@@ -14,11 +14,14 @@ import type { NodeBasicInfo } from "@/contexts/NodeListContext";
  *   - 只有该节点的 Ping Stats 显示「CNB-AI-反代」可达性标签。
  * 这样即使后端仍把该可达性任务分配给新探针，新增探针也不会再出现 CNB 相关标签。
  *
- * 识别依据：节点名称含 `Azure`（当前固定宿主节点为 `[香港]Azure-VPS`）。
- * 若以后反代宿主机改名/换机，只需改这里/迁移即可整体切换。
+ * 识别依据优先用锚点 uuid（强识别），保留兼容性节点名含 `Azure`（当前固定宿主节点
+ * 为 `[香港]Azure-VPS`，uuid `7ff47295-1d4c-4443-b72a-e6f81a56b527`）。即使宿主机将来
+ * 改名（名称含 azure）只要 uuid 不变仍能识别；也不会因新增某台名字含 azure 的非宿主机而误显。
  */
 
 const CNB_HOST_NAME_PATTERN = /azure/i;
+/** anchor uuid —— 即使宿主机改名也按此强识别（当前承载 CNB 反代的节点）。 */
+const CNB_HOST_UUID = "7ff47295-1d4c-4443-b72a-e6f81a56b527";
 
 /** 该可达性任务是否为「CNB 反代探活」任务（仅 CNB 宿主需要展示）。 */
 function isCnbReachabilityTaskName(name: string): boolean {
@@ -27,8 +30,11 @@ function isCnbReachabilityTaskName(name: string): boolean {
 }
 
 /** 判断给定节点是否就是承载 CNB 反代/额度数据的宿主节点。 */
-export function isCnbProxyHost(node: Pick<NodeBasicInfo, "name"> | undefined | null): boolean {
+export function isCnbProxyHost(
+  node: Pick<NodeBasicInfo, "name" | "uuid"> | undefined | null,
+): boolean {
   if (!node) return false;
+  if (node.uuid && node.uuid.toLowerCase() === CNB_HOST_UUID) return true;
   return CNB_HOST_NAME_PATTERN.test(node.name ?? "");
 }
 

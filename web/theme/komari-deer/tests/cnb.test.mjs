@@ -9,6 +9,7 @@ const source = readFileSync(new URL("../src/utils/cnb.ts", import.meta.url), "ut
 
 // —— 与 cnb.ts 实现等价的内联副本（执行级验证）——
 const CNB_HOST_NAME_PATTERN = /azure/i;
+const CNB_HOST_UUID = "7ff47295-1d4c-4443-b72a-e6f81a56b527";
 
 function isCnbReachabilityTaskName(name) {
   const n = (name ?? "").toLowerCase();
@@ -16,6 +17,7 @@ function isCnbReachabilityTaskName(name) {
 }
 function isCnbProxyHost(node) {
   if (!node) return false;
+  if (node?.uuid && String(node.uuid).toLowerCase() === CNB_HOST_UUID) return true;
   return CNB_HOST_NAME_PATTERN.test(node?.name ?? "");
 }
 function filterCnbReachability(items, isHost) {
@@ -24,12 +26,19 @@ function filterCnbReachability(items, isHost) {
 }
 // —— 内联副本结束 ——
 
-test("CNB 宿主判定只看名称里的 Azure 关键字", () => {
-  assert.equal(isCnbProxyHost({ name: "[香港]Azure-VPS" }), true);
-  assert.equal(isCnbProxyHost({ name: "AzureVPS" }), true); // 大小写不敏感
+const AZURE_UUID = "7ff47295-1d4c-4443-b72a-e6f81a56b527";
+
+test("CNB 宿主判定：名称含 Azure 或 uuid 命中锚点都判为宿主", () => {
+  assert.equal(isCnbProxyHost({ name: "[香港]Azure-VPS", uuid: AZURE_UUID }), true); // 两者都命中
+  assert.equal(isCnbProxyHost({ name: "AzureVPS", uuid: "some-other" }), true); // 仅名称命中
+  // anchor uuid 强识别：即使名称不含 azure 仍判为宿主
+  assert.equal(isCnbProxyHost({ name: "[香港]反代母机", uuid: AZURE_UUID }), true);
+  // 非宿主：名称不含 azure 且 uuid 不命中
+  assert.equal(isCnbProxyHost({ name: "[美国]Google-VPS" }), false);
+  assert.equal(isCnbProxyHost({ name: "[美国]Google-VPS", uuid: "abc" }), false);
+  // 空对象 / null
   assert.equal(isCnbProxyHost({}), false);
   assert.equal(isCnbProxyHost(null), false);
-  assert.equal(isCnbProxyHost({ name: "[美国]Google-VPS" }), false);
 });
 
 test("非宿主节点过滤 CNB-AI-反代 可达性标签，但保留其它标签", () => {
@@ -53,8 +62,9 @@ test("宿主节点不过滤任何可达性标签（保留 CNB-AI-反代）", () 
   assert.equal(got[1].name, "CNB-AI-反代");
 });
 
-test("source 中确实以明星表达式实现 isCnbProxyHost 与过滤闸门", () => {
+test("source 中确实以明确定义实现宿主判定与过滤闸门", () => {
   assert.ok(source.includes("function isCnbProxyHost"));
   assert.ok(source.includes("function filterCnbReachability"));
   assert.ok(source.includes("CNB_HOST_NAME_PATTERN"));
+  assert.ok(source.includes("CNB_HOST_UUID")); // 铺点 uuid 强识别需存在
 });
