@@ -236,7 +236,8 @@ func sortRecords(records []models.Record) {
 	})
 }
 
-// GetGPURecordsByClientAndTime 从 metric store 查询 GPU 记录
+// GetGPURecordsByClientAndTime 从 metric store 查询 GPU 记录。与负载记录相同
+// 走 Series（rollup+raw 聚合），不受 10 分钟原始点窗口限制；按设备+时间桶聚合。
 func GetGPURecordsByClientAndTime(ctx context.Context, clientUUID string, start, end time.Time) ([]models.GPURecord, error) {
 	s := GetStore()
 	if s == nil {
@@ -246,6 +247,9 @@ func GetGPURecordsByClientAndTime(ctx context.Context, clientUUID string, start,
 	// 查询 GPU 相关指标（每设备利用率使用独立指标 gpu.device.usage）
 	gpuMetrics := []string{MetricGPUDeviceUsage, MetricGPUMem, MetricGPUMemTotal, MetricGPUTemp}
 
+	now := time.Now().UTC()
+	interval := recordSeriesInterval(s, start, end, now)
+
 	// 按设备索引和时间组织数据
 	type gpuKey struct {
 		deviceIndex int
@@ -254,13 +258,19 @@ func GetGPURecordsByClientAndTime(ctx context.Context, clientUUID string, start,
 	recordMap := make(map[gpuKey]*models.GPURecord)
 
 	for _, metricName := range gpuMetrics {
-		points, err := s.Query(ctx, metric.Query{
-			MetricName: metricName,
-			EntityID:   clientUUID,
-			Start:      start,
-			End:        end,
-			Order:      metric.OrderAsc,
-		})
+		points, err := s.Series(ctx, metric.AggregateQuery{
+			Query: metric.Query{
+				MetricName: metricName,
+				EntityID:   clientUUID,
+				Start:      start,
+				End:        end,
+				Order:      metric.OrderAsc,
+			},
+			Aggregation: metric.AggAvg,
+			Interval:    interval,
+			// rollup 路径只在 PreserveSeries 时回填 series tags（device_index/device_name）
+			PreserveSeries: true,
+		}, now)
 		if err != nil {
 			continue // GPU 数据可能不存在
 		}
@@ -275,11 +285,11 @@ func GetGPURecordsByClientAndTime(ctx context.Context, clientUUID string, start,
 				deviceName = name
 			}
 
-			key := gpuKey{deviceIndex: deviceIndex, timestamp: p.Timestamp.Unix()}
+			key := gpuKey{deviceIndex: deviceIndex, timestamp: p.Bucket.Unix()}
 			if recordMap[key] == nil {
 				recordMap[key] = &models.GPURecord{
 					Client:      clientUUID,
-					Time:        p.Timestamp.UTC(),
+					Time:        p.Bucket.UTC(),
 					DeviceIndex: deviceIndex,
 					DeviceName:  deviceName,
 				}

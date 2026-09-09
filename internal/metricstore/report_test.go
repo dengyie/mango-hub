@@ -502,3 +502,47 @@ func TestWriteReportStoresMiningMetricsAndHistory(t *testing.T) {
 		t.Fatalf("unexpected mining record: %#v", rec)
 	}
 }
+
+func TestGetGPURecordsPreservesDeviceTagsAcrossRollups(t *testing.T) {
+	ctx := context.Background()
+	policy := defaultRollupPolicy()
+	useReportTestStore(t, &policy)
+	base := time.Now().UTC().Truncate(time.Second)
+
+	report := v1.Report{
+		UUID:      "gpu-node",
+		UpdatedAt: base,
+		GPU: &v1.GPUDetailReport{
+			Count:        1,
+			AverageUsage: 42,
+			DetailedInfo: []v1.GPUDeviceInfo{{
+				Name:        "NVIDIA GeForce RTX 3070",
+				MemoryTotal: 8589934592,
+				MemoryUsed:  2147483648,
+				Utilization: 96,
+				Temperature: 71,
+			}},
+		},
+	}
+	if _, err := WriteReport(ctx, report); err != nil {
+		t.Fatalf("write gpu report: %v", err)
+	}
+	if err := FlushReportBatch(ctx); err != nil {
+		t.Fatalf("flush gpu report batch: %v", err)
+	}
+
+	records, err := GetGPURecordsByClientAndTime(ctx, report.UUID, base.Add(-time.Minute), base.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("query gpu history: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("gpu records = %d, want 1", len(records))
+	}
+	rec := records[0]
+	if rec.DeviceIndex != 0 || rec.DeviceName != "NVIDIA GeForce RTX 3070" {
+		t.Fatalf("gpu record identity tags lost: %#v", rec)
+	}
+	if rec.Utilization != 96 || rec.Temperature != 71 || rec.MemUsed != 2147483648 || rec.MemTotal != 8589934592 {
+		t.Fatalf("unexpected gpu record: %#v", rec)
+	}
+}
