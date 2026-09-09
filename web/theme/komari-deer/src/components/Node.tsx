@@ -16,6 +16,7 @@ import PriceTags from "./PriceTags";
 import CircleChart from "./CircleChart";
 import LoadChartFloat from "./LoadChartFloat";
 import Tips from "./ui/tips";
+import { filterCnbReachability, isCnbProxyHost } from "@/utils/cnb";
 
 /** Format seconds into readable uptime */
 export function formatUptime(seconds: number, t: TFunction): string {
@@ -300,6 +301,10 @@ interface NodeProps {
 const Node = ({ basic, live, online }: NodeProps) => {
   const [t] = useTranslation();
   const pingStats = usePingStats(basic.uuid, 24);
+  //「CNB-AI-反代」可达性标签是后端 default_on 任务自动加给所有新增探针的，
+  // 只有承载 CNB 反代的宿主节点（Azure-VPS）需要展示，其它节点一律过滤掉。
+  const isCnbHost = isCnbProxyHost(basic);
+  const httpReachability = filterCnbReachability(pingStats.httpReachability, isCnbHost);
 
   const defaultLive = {
     cpu: { usage: 0 },
@@ -483,7 +488,7 @@ const Node = ({ basic, live, online }: NodeProps) => {
 
         <div className="h-4" />
 
-        <CompactPingTimeline pingStats={pingStats} t={t} />
+        <CompactPingTimeline pingStats={{ ...pingStats, httpReachability }} t={t} />
 
         {basic.traffic_limit > 0 && (
           <div className="mt-2.5 space-y-1.5 select-none">

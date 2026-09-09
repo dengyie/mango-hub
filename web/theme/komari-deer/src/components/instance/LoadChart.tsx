@@ -25,6 +25,7 @@ import {
 import { usePublicInfo } from "@/contexts/PublicInfoContext";
 import Loading from "@/components/loading";
 import { useHistory } from "@/lib/useHistory";
+import { isCnbProxyHost } from "@/utils/cnb";
 import dynamic from "next/dynamic";
 
 const QuotaChart = dynamic(() => import("@/components/instance/QuotaChart"), {
@@ -188,6 +189,9 @@ const LoadChart = ({ uuid, data = [], embedded = false }: LoadChartProps) => {
     return "";
   };
   const node = nodeList?.find((n) => n.uuid === uuid);
+  // CNB AI 额度卡只属于承载 CNB 反代的宿主节点（[香港]Azure-VPS），
+  // 其它节点弹窗不应出现 CNB AI Quota。
+  const isCnbHost = isCnbProxyHost(node);
   const lableFormatter = (value: any) => {
     const date = new Date(value);
     if (activeHoursView === t("common.real_time") || activeHoursView === "real-time") {
@@ -671,7 +675,7 @@ const LoadChart = ({ uuid, data = [], embedded = false }: LoadChartProps) => {
           )}
           </CardContent>
         </Card>
-        {embedded && <QuotaChart />}
+        {embedded && isCnbHost && <QuotaChart />}
         {!embedded && (
           <>
         {/* Connections */}

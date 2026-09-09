@@ -8,3 +8,4 @@ export * from './osImageHelper';
 export * from './regionHelper';
 export * from './UserAgentHelper';
 export * from './RecordHelper';
+export * from './cnb';
