@@ -18,10 +18,28 @@ type GpuDeviceRecords = {
   }>;
 };
 
-// /api/records/load 响应 data 的忠实缓存形状（含 gpu_devices，供详情页 GPU 合并）
+// hub getRecordsByUUID 返回的 mining_records 元素（metricstore.MiningRecord）
+export type MiningRecord = {
+  time: string;
+  rig: string;
+  algorithm: string;
+  pool: string;
+  hashrate: number;   // H/s
+  power: number;      // W
+  temperature: number; // °C
+  fan: number;        // %
+  shares_valid: number;
+  shares_stale: number;
+  shares_invalid: number;
+  hw_errors: number;
+  pool_latency: number; // ms
+};
+
+// /api/records/load 响应 data 的忠实缓存形状（含 gpu_devices / mining_records）
 export type RecordsData = {
   records: RecordFormat[];
   gpu_devices: Record<string, GpuDeviceRecords>;
+  mining_records: MiningRecord[];
 };
 
 export type CacheEntry = {
@@ -89,6 +107,7 @@ export async function loadHistory(
       const data: RecordsData = {
         records: resp.data?.records ?? [],
         gpu_devices: resp.data?.gpu_devices ?? {},
+        mining_records: resp.data?.mining_records ?? [],
       };
       cache.set(k, { uuid, hours, data, fetchedAt: Date.now(), error: null, promise: null });
       emit();
@@ -105,7 +124,7 @@ export async function loadHistory(
         promise: null,
       });
       emit();
-      return existing?.data ?? { records: [], gpu_devices: {} };
+      return existing?.data ?? { records: [], gpu_devices: {}, mining_records: [] };
     })
     .finally(() => clearTimeout(timeout));
 

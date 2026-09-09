@@ -87,6 +87,15 @@ func createMetricDefinitionsWithDefaultRetention(ctx context.Context, s *metric.
 		{Name: MetricDiskIOWriteBytes, Type: metric.TypeGauge, Unit: "bytes/s", Description: "Per-device disk write bytes rate", RetentionDays: defaultRetentionDays},
 		{Name: MetricDiskIOReadIOPS, Type: metric.TypeGauge, Unit: "ops/s", Description: "Per-device disk read IOPS", RetentionDays: defaultRetentionDays},
 		{Name: MetricDiskIOWriteIOPS, Type: metric.TypeGauge, Unit: "ops/s", Description: "Per-device disk write IOPS", RetentionDays: defaultRetentionDays},
+		{Name: MetricMiningHashrate, Type: metric.TypeGauge, Unit: "H/s", Description: "Miner hashrate (1min)", RetentionDays: defaultRetentionDays},
+		{Name: MetricMiningPower, Type: metric.TypeGauge, Unit: "W", Description: "Miner power draw", RetentionDays: defaultRetentionDays},
+		{Name: MetricMiningTemp, Type: metric.TypeGauge, Unit: "°C", Description: "Miner core device temperature", RetentionDays: defaultRetentionDays},
+		{Name: MetricMiningFan, Type: metric.TypeGauge, Unit: "%", Description: "Miner core device fan speed", RetentionDays: defaultRetentionDays},
+		{Name: MetricMiningSharesValid, Type: metric.TypeGauge, Unit: "count", Description: "Accepted (valid) shares", RetentionDays: defaultRetentionDays},
+		{Name: MetricMiningSharesStale, Type: metric.TypeGauge, Unit: "count", Description: "Stale shares", RetentionDays: defaultRetentionDays},
+		{Name: MetricMiningSharesInvalid, Type: metric.TypeGauge, Unit: "count", Description: "Rejected (invalid) shares", RetentionDays: defaultRetentionDays},
+		{Name: MetricMiningHwErrors, Type: metric.TypeGauge, Unit: "count", Description: "Miner hardware compute errors", RetentionDays: defaultRetentionDays},
+		{Name: MetricMiningPoolLatency, Type: metric.TypeGauge, Unit: "ms", Description: "Mining pool latency", RetentionDays: defaultRetentionDays},
 	}
 
 	for _, def := range definitions {

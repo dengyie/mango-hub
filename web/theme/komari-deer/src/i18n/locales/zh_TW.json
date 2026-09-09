@@ -931,5 +931,13 @@
     "requests": "請求數",
     "errors": "錯誤",
     "trend": "近 7 日"
+  },
+  "mining": {
+    "title": "挖礦",
+    "hashrate": "算力",
+    "shares": "份額",
+    "shares_valid": "Valid",
+    "shares_stale": "Stale",
+    "shares_invalid": "Invalid"
   }
 }

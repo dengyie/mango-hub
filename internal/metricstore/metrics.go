@@ -26,6 +26,15 @@ const (
 	MetricDiskIOWriteBytes = "disk_io.write_bytes"
 	MetricDiskIOReadIOPS   = "disk_io.read_iops"
 	MetricDiskIOWriteIOPS  = "disk_io.write_iops"
+	MetricMiningHashrate   = "mining.hashrate"
+	MetricMiningPower      = "mining.power"
+	MetricMiningTemp       = "mining.temperature"
+	MetricMiningFan        = "mining.fan"
+	MetricMiningSharesValid   = "mining.shares.valid"
+	MetricMiningSharesStale   = "mining.shares.stale"
+	MetricMiningSharesInvalid = "mining.shares.invalid"
+	MetricMiningHwErrors      = "mining.hw_errors"
+	MetricMiningPoolLatency   = "mining.pool_latency"
 )
 
 // loadRecordMetricNames are the entity-level metrics used to reconstruct the
@@ -54,7 +63,15 @@ var diskIOMetricNames = []string{
 	MetricDiskIOReadIOPS, MetricDiskIOWriteIOPS,
 }
 
-var builtinMetricNames = joinMetricNames(recordMetricNames, pingMetricNames, diskIOMetricNames)
+// miningMetricNames are per-rig miner status metrics (hashrate/power/temp/
+// shares/...), stored as tagged points like GPU device metrics.
+var miningMetricNames = []string{
+	MetricMiningHashrate, MetricMiningPower, MetricMiningTemp, MetricMiningFan,
+	MetricMiningSharesValid, MetricMiningSharesStale, MetricMiningSharesInvalid,
+	MetricMiningHwErrors, MetricMiningPoolLatency,
+}
+
+var builtinMetricNames = joinMetricNames(recordMetricNames, pingMetricNames, diskIOMetricNames, miningMetricNames)
 
 func metricNameForRecordField(name string) (string, bool) {
 	switch name {

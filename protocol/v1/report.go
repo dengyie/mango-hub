@@ -22,14 +22,34 @@ type Report struct {
 	Load        LoadReport        `json:"load"`
 	Disk        DiskReport        `json:"disk"`
 	Network     NetworkReport     `json:"network"`
-	Connections ConnectionsReport `json:"connections"`
+	Connections ConnectionsReport  `json:"connections"`
 	GPU         *GPUDetailReport  `json:"gpu,omitempty"`
 	DiskIO      []DiskIOReport    `json:"disk_io,omitempty"`
+	Mining      *MiningReport     `json:"mining,omitempty"`
 	Uptime      int64             `json:"uptime"`
 	Process     int               `json:"process"`
 	Message     string            `json:"message"`
 	Method      string            `json:"method,omitempty"`
 	UpdatedAt   time.Time         `json:"updated_at"`
+}
+
+// MiningReport 矿工状态快照（SRBMiner /api/v2/status 归一化）。
+// 各 hashrate 单位 H/s，power 单位 W。缺失时整个对象省略。
+type MiningReport struct {
+	Algorithm    string  `json:"algorithm"`
+	Pool         string  `json:"pool"`
+	Wallet       string  `json:"wallet"`
+	Hashrate1Min float64 `json:"hashrate_1min"`
+	Hashrate1Hr  float64 `json:"hashrate_1hr"`
+	PowerW       float64 `json:"power_w"`
+	Temperature  float64 `json:"temperature"`
+	FanPercent   float64 `json:"fan_percent"`
+	SharesTotal  int64   `json:"shares_total"`
+	SharesValid  int64   `json:"shares_valid"`
+	SharesStale  int64   `json:"shares_stale"`
+	SharesInvalid int64  `json:"shares_invalid"`
+	HwErrors     int64   `json:"hw_errors"`
+	PoolLatency  int64   `json:"pool_latency"`
 }
 
 type CPUReport struct {

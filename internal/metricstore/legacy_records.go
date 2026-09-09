@@ -308,6 +308,93 @@ func GetGPURecordsByClientAndTime(ctx context.Context, clientUUID string, start,
 	return records, nil
 }
 
+// MiningRecord 挖矿指标的历史点（tags: rig/algorithm/pool 随每次点带回）。
+type MiningRecord struct {
+	Client      string    `json:"client"`
+	Time        time.Time `json:"time"`
+	Rig         string    `json:"rig"`
+	Algorithm   string    `json:"algorithm"`
+	Pool        string    `json:"pool"`
+	Hashrate    float64   `json:"hashrate"`
+	Power       float64   `json:"power"`
+	Temperature float64   `json:"temperature"`
+	Fan         float64   `json:"fan"`
+	SharesValid int64     `json:"shares_valid"`
+	SharesStale int64     `json:"shares_stale"`
+	SharesInvalid int64    `json:"shares_invalid"`
+	HwErrors    int64     `json:"hw_errors"`
+	PoolLatency int64     `json:"pool_latency"`
+}
+
+// GetMiningRecordsByClientAndTime 从 metric store 查询挖矿记录（与 GPU 同一模式：
+// 逐指标查询 tagged 原始点，按 rig+时间聚合）。
+func GetMiningRecordsByClientAndTime(ctx context.Context, clientUUID string, start, end time.Time) ([]MiningRecord, error) {
+	s := GetStore()
+	if s == nil {
+		return nil, fmt.Errorf("metric store not enabled")
+	}
+
+	type miningKey struct {
+		rig       string
+		timestamp int64
+	}
+	recordMap := make(map[miningKey]*MiningRecord)
+
+	for _, metricName := range miningMetricNames {
+		points, err := s.Query(ctx, metric.Query{
+			MetricName: metricName,
+			EntityID:   clientUUID,
+			Start:     start,
+			End:       end,
+			Order:     metric.OrderAsc,
+		})
+		if err != nil {
+			continue // 挖矿数据可能不存在
+		}
+		for _, p := range points {
+			rig := p.Tags["rig"]
+			key := miningKey{rig: rig, timestamp: p.Timestamp.Unix()}
+			if recordMap[key] == nil {
+				rec := &MiningRecord{
+					Client:    clientUUID,
+					Time:      p.Timestamp.UTC(),
+					Rig:       rig,
+					Algorithm: p.Tags["algorithm"],
+					Pool:      p.Tags["pool"],
+				}
+				recordMap[key] = rec
+			}
+			rec := recordMap[key]
+			switch metricName {
+			case MetricMiningHashrate:
+				rec.Hashrate = p.Value
+			case MetricMiningPower:
+				rec.Power = p.Value
+			case MetricMiningTemp:
+				rec.Temperature = p.Value
+			case MetricMiningFan:
+				rec.Fan = p.Value
+			case MetricMiningSharesValid:
+				rec.SharesValid = int64(p.Value)
+			case MetricMiningSharesStale:
+				rec.SharesStale = int64(p.Value)
+			case MetricMiningSharesInvalid:
+				rec.SharesInvalid = int64(p.Value)
+			case MetricMiningHwErrors:
+				rec.HwErrors = int64(p.Value)
+			case MetricMiningPoolLatency:
+				rec.PoolLatency = int64(p.Value)
+			}
+		}
+	}
+
+	records := make([]MiningRecord, 0, len(recordMap))
+	for _, rec := range recordMap {
+		records = append(records, *rec)
+	}
+	return records, nil
+}
+
 // GetPingRecords 从 metric store 查询兼容旧接口的 ping 记录。
 //
 // 旧接口过去直接读取 ping_records。这里使用与 queryMetrics 相同的 Series

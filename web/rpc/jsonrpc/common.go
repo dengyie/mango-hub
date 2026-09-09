@@ -340,6 +340,7 @@ func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 		Process        int                 `json:"process"`
 		Connections    int                 `json:"connections"`
 		ConnectionsUdp int                 `json:"connections_udp"`
+		Mining         *v1.MiningReport    `json:"mining,omitempty"`
 		Online         bool                `json:"online"`
 		Uptime         int64               `json:"uptime"`
 		Ping           map[string]pingStat `json:"ping"`
@@ -377,6 +378,7 @@ func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 			Process:        rep.Process,
 			Connections:    rep.Connections.TCP + rep.Connections.UDP,
 			ConnectionsUdp: rep.Connections.UDP,
+			Mining:         rep.Mining,
 			Online:         onlineSet[uuid],
 			Uptime:         rep.Uptime,
 			Ping:           stats,

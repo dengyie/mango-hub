@@ -42,6 +42,25 @@ func reportMetricPoints(report v1.Report, trafficUp, trafficDown int64) []metric
 			metric.Point{MetricName: MetricDiskIOWriteIOPS, EntityID: entityID, Timestamp: ts, Value: d.WriteIOPS, Tags: tags},
 		)
 	}
+	if report.Mining != nil {
+		mining := report.Mining
+		tags := map[string]string{
+			"rig":       mining.Wallet,
+			"algorithm": mining.Algorithm,
+			"pool":      mining.Pool,
+		}
+		points = append(points,
+			metric.Point{MetricName: MetricMiningHashrate, EntityID: entityID, Timestamp: ts, Value: mining.Hashrate1Min, Tags: tags},
+			metric.Point{MetricName: MetricMiningPower, EntityID: entityID, Timestamp: ts, Value: mining.PowerW, Tags: tags},
+			metric.Point{MetricName: MetricMiningTemp, EntityID: entityID, Timestamp: ts, Value: mining.Temperature, Tags: tags},
+			metric.Point{MetricName: MetricMiningFan, EntityID: entityID, Timestamp: ts, Value: mining.FanPercent, Tags: tags},
+			metric.Point{MetricName: MetricMiningSharesValid, EntityID: entityID, Timestamp: ts, Value: float64(mining.SharesValid), Tags: tags},
+			metric.Point{MetricName: MetricMiningSharesStale, EntityID: entityID, Timestamp: ts, Value: float64(mining.SharesStale), Tags: tags},
+			metric.Point{MetricName: MetricMiningSharesInvalid, EntityID: entityID, Timestamp: ts, Value: float64(mining.SharesInvalid), Tags: tags},
+			metric.Point{MetricName: MetricMiningHwErrors, EntityID: entityID, Timestamp: ts, Value: float64(mining.HwErrors), Tags: tags},
+			metric.Point{MetricName: MetricMiningPoolLatency, EntityID: entityID, Timestamp: ts, Value: float64(mining.PoolLatency), Tags: tags},
+		)
+	}
 	if report.GPU == nil {
 		return points
 	}

@@ -438,3 +438,64 @@ func assertMetricAggregate(t *testing.T, s *metric.Store, metricName, entityID s
 		t.Fatalf("aggregate %s = %#v, want value=%v count=%d", metricName, points, want, wantCount)
 	}
 }
+
+func TestWriteReportStoresMiningMetricsAndHistory(t *testing.T) {
+	ctx := context.Background()
+	policy := defaultRollupPolicy()
+	s := useReportTestStore(t, &policy)
+	base := time.Now().UTC().Truncate(time.Second)
+
+	report := v1.Report{
+		UUID:      "rig-a",
+		UpdatedAt: base,
+		Mining: &v1.MiningReport{
+			Algorithm:    "pearlhash",
+			Pool:         "prl-eu.kryptex.network:7048",
+			Wallet:       "krxXGNKMD4/home-win",
+			Hashrate1Min: 62403052604616.36,
+			PowerW:       149,
+			Temperature:  74,
+			FanPercent:    86,
+			SharesValid:  64,
+			SharesInvalid: 1,
+			HwErrors:     0,
+			PoolLatency:  232,
+		},
+	}
+	if _, err := WriteReport(ctx, report); err != nil {
+		t.Fatalf("write mining report: %v", err)
+	}
+	if err := FlushReportBatch(ctx); err != nil {
+		t.Fatalf("flush mining report batch: %v", err)
+	}
+
+	points, err := s.Query(ctx, metric.Query{
+		MetricName: MetricMiningHashrate,
+		EntityID:   report.UUID,
+		Start:      base.Add(-time.Second),
+		End:        base.Add(time.Second),
+		Order:      metric.OrderAsc,
+	})
+	if err != nil {
+		t.Fatalf("query mining hashrate: %v", err)
+	}
+	if len(points) != 1 || points[0].Value != 62403052604616.36 {
+		t.Fatalf("unexpected mining hashrate points: %#v", points)
+	}
+	if points[0].Tags["rig"] != "krxXGNKMD4/home-win" || points[0].Tags["algorithm"] != "pearlhash" {
+		t.Fatalf("unexpected mining tags: %#v", points[0].Tags)
+	}
+
+	records, err := GetMiningRecordsByClientAndTime(ctx, report.UUID, base.Add(-time.Minute), base.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("query mining history: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("mining records = %d, want 1", len(records))
+	}
+	rec := records[0]
+	if rec.Hashrate != 62403052604616.36 || rec.Power != 149 || rec.Temperature != 74 ||
+		rec.Fan != 86 || rec.SharesValid != 64 || rec.SharesInvalid != 1 || rec.PoolLatency != 232 {
+		t.Fatalf("unexpected mining record: %#v", rec)
+	}
+}

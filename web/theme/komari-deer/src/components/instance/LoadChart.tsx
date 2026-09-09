@@ -31,6 +31,9 @@ import dynamic from "next/dynamic";
 const QuotaChart = dynamic(() => import("@/components/instance/QuotaChart"), {
   ssr: false,
 });
+const MiningChart = dynamic(() => import("@/components/instance/MiningChart"), {
+  ssr: false,
+});
 
 type LoadChartProps = {
   uuid: string;
@@ -676,6 +679,15 @@ const LoadChart = ({ uuid, data = [], embedded = false }: LoadChartProps) => {
           </CardContent>
         </Card>
         {embedded && isCnbHost && <QuotaChart />}
+        {/* Mining：配置了矿工上报的节点才有 mining_records；非矿机不渲染 */}
+        {(cacheData?.mining_records?.length ?? 0) > 0 && (
+          <MiningChart
+            records={cacheData!.mining_records}
+            timeFormatter={timeFormatter}
+            labelFormatter={lableFormatter}
+            margin={chartMargin}
+          />
+        )}
         {!embedded && (
           <>
         {/* Connections */}

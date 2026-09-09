@@ -11,6 +11,7 @@ import (
 	"github.com/komari-monitor/komari/database/models"
 	"github.com/komari-monitor/komari/database/records"
 	"github.com/komari-monitor/komari/database/tasks"
+	"github.com/komari-monitor/komari/internal/metricstore"
 	"github.com/komari-monitor/komari/pkg/rpc"
 	"github.com/komari-monitor/komari/utils"
 	agent_runtime "github.com/komari-monitor/komari/web/agent"
@@ -200,6 +201,15 @@ func publicGetRecordsByUUID(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 			response["has_gpu_data"] = true
 		} else {
 			response["has_gpu_data"] = false
+		}
+	}
+	if params.LoadType == "" || params.LoadType == "all" || params.LoadType == "mining" {
+		miningRecords, err := metricstore.GetMiningRecordsByClientAndTime(context.Background(), params.UUID, now.Add(-time.Duration(hoursInt)*time.Hour), now)
+		if err == nil && len(miningRecords) > 0 {
+			response["mining_records"] = miningRecords
+			response["has_mining_data"] = true
+		} else {
+			response["has_mining_data"] = false
 		}
 	}
 	return response, nil
