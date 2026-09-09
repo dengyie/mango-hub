@@ -354,6 +354,8 @@ func GetMiningRecordsByClientAndTime(ctx context.Context, clientUUID string, sta
 			},
 			Aggregation: metric.AggAvg,
 			Interval:    interval,
+			// rollup 路径只在 PreserveSeries 时回填 series tags（rig/algorithm/pool）
+			PreserveSeries: true,
 		}, now)
 		if err != nil {
 			continue // 挖矿数据可能不存在

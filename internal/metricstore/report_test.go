@@ -494,6 +494,9 @@ func TestWriteReportStoresMiningMetricsAndHistory(t *testing.T) {
 		t.Fatalf("mining records = %d, want 1", len(records))
 	}
 	rec := records[0]
+	if rec.Rig != "krxXGNKMD4/home-win" || rec.Algorithm != "pearlhash" || rec.Pool != "prl-eu.kryptex.network:7048" {
+		t.Fatalf("mining record identity tags lost: %#v", rec)
+	}
 	if rec.Hashrate != 62403052604616.36 || rec.Power != 149 || rec.Temperature != 74 ||
 		rec.Fan != 86 || rec.SharesValid != 64 || rec.SharesInvalid != 1 || rec.PoolLatency != 232 {
 		t.Fatalf("unexpected mining record: %#v", rec)
