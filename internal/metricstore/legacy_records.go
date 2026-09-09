@@ -326,13 +326,16 @@ type MiningRecord struct {
 	PoolLatency int64     `json:"pool_latency"`
 }
 
-// GetMiningRecordsByClientAndTime 从 metric store 查询挖矿记录（与 GPU 同一模式：
-// 逐指标查询 tagged 原始点，按 rig+时间聚合）。
+// GetMiningRecordsByClientAndTime 从 metric store 查询挖矿记录。与负载记录相同
+// 走 Series（rollup+raw 聚合），不受 10 分钟原始点窗口限制；按 rig+时间桶聚合。
 func GetMiningRecordsByClientAndTime(ctx context.Context, clientUUID string, start, end time.Time) ([]MiningRecord, error) {
 	s := GetStore()
 	if s == nil {
 		return nil, fmt.Errorf("metric store not enabled")
 	}
+
+	now := time.Now().UTC()
+	interval := recordSeriesInterval(s, start, end, now)
 
 	type miningKey struct {
 		rig       string
@@ -341,23 +344,27 @@ func GetMiningRecordsByClientAndTime(ctx context.Context, clientUUID string, sta
 	recordMap := make(map[miningKey]*MiningRecord)
 
 	for _, metricName := range miningMetricNames {
-		points, err := s.Query(ctx, metric.Query{
-			MetricName: metricName,
-			EntityID:   clientUUID,
-			Start:     start,
-			End:       end,
-			Order:     metric.OrderAsc,
-		})
+		points, err := s.Series(ctx, metric.AggregateQuery{
+			Query: metric.Query{
+				MetricName: metricName,
+				EntityID:   clientUUID,
+				Start:      start,
+				End:        end,
+				Order:      metric.OrderAsc,
+			},
+			Aggregation: metric.AggAvg,
+			Interval:    interval,
+		}, now)
 		if err != nil {
 			continue // 挖矿数据可能不存在
 		}
 		for _, p := range points {
 			rig := p.Tags["rig"]
-			key := miningKey{rig: rig, timestamp: p.Timestamp.Unix()}
+			key := miningKey{rig: rig, timestamp: p.Bucket.Unix()}
 			if recordMap[key] == nil {
 				rec := &MiningRecord{
 					Client:    clientUUID,
-					Time:      p.Timestamp.UTC(),
+					Time:      p.Bucket.UTC(),
 					Rig:       rig,
 					Algorithm: p.Tags["algorithm"],
 					Pool:      p.Tags["pool"],
