@@ -37,8 +37,9 @@ export interface PingStats {
   avgVolatility: number;
   history: PingHistoryPoint[];
   hasData: boolean;
-  /** HTTP 类型任务只按可达性展示，不参与 latency/loss 阈值着色；up=null 表示无采样 */
-  httpReachability: { name: string; up: boolean | null }[];
+  /** HTTP 类型任务只按可达性展示，不参与 latency/loss 阈值着色；up=null 表示无采样；
+   * availability 为窗口内可用率百分比(无采样为 null) */
+  httpReachability: { name: string; up: boolean | null; availability: number | null }[];
 }
 
 const HISTORY_BUCKET_COUNT = 28;
@@ -170,19 +171,26 @@ export function usePingStats(uuid: string, hours: number = 24): PingStats {
           ? volatilityValues.reduce((sum, val) => sum + val, 0) / volatilityValues.length
           : 0;
 
-        // HTTP 任务可达性:以该任务最新采样为准(value<0 即不可达);窗口内无采样 = unknown
+        // HTTP 任务可达性:以该任务最新采样为准(value<0 即不可达);窗口内无采样 = unknown。
+        // 同时统计窗口内可用率(up 采样占比),无采样时为 null。
         const httpReachability = httpTasks.map((task) => {
           let up: boolean | null = null;
           let newestTs = -Infinity;
+          let samples = 0;
+          let upSamples = 0;
           for (const record of records) {
             if (record.task_id !== task.id) continue;
+            const reachable = record.value >= 0;
+            samples += 1;
+            if (reachable) upSamples += 1;
             const ts = new Date(record.time).getTime();
             if (Number.isFinite(ts) && ts > newestTs) {
               newestTs = ts;
-              up = record.value >= 0;
+              up = reachable;
             }
           }
-          return { name: task.name, up };
+          const availability = samples > 0 ? (upSamples / samples) * 100 : null;
+          return { name: task.name, up, availability };
         });
 
         setStats({

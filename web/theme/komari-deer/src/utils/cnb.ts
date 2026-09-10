@@ -43,9 +43,9 @@ export function isCnbProxyHost(
  * 因为它是后端 default_on 任务自动加给所有新增探针的，只有 CNB 反代宿主才需要。
  */
 export function filterCnbReachability(
-  items: { name: string; up: boolean | null }[],
+  items: { name: string; up: boolean | null; availability: number | null }[],
   isHost: boolean,
-): { name: string; up: boolean | null }[] {
+): { name: string; up: boolean | null; availability: number | null }[] {
   if (isHost) return items;
   return items.filter((item) => !isCnbReachabilityTaskName(item?.name ?? ""));
 }

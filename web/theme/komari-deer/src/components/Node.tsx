@@ -240,13 +240,15 @@ function CompactPingTimeline({ pingStats, t }: { pingStats: PingStats; t: TFunct
           {pingStats.httpReachability.map((h) => (
             <span
               key={h.name}
-              className="inline-flex max-w-[160px] items-center gap-1.5 rounded-full border border-[#2a3a52]/40 bg-[#0d1320]/80 px-2 py-0.5 text-[10px] leading-none text-[#8f98ac]"
+              className="inline-flex max-w-[200px] items-center gap-1.5 rounded-full border border-[#2a3a52]/40 bg-[#0d1320]/80 px-2 py-0.5 text-[10px] leading-none text-[#8f98ac]"
               title={
                 h.up === null
                   ? t("nodeCard.noPingData")
-                  : h.up
-                    ? t("nodeCard.online")
-                    : t("nodeCard.offline")
+                  : h.availability !== null
+                    ? `${h.availability.toFixed(2)}% · ${h.up ? t("nodeCard.online") : t("nodeCard.offline")}`
+                    : h.up
+                      ? t("nodeCard.online")
+                      : t("nodeCard.offline")
               }
             >
               <span
@@ -260,6 +262,20 @@ function CompactPingTimeline({ pingStats, t }: { pingStats: PingStats; t: TFunct
                 )}
               />
               <span className="truncate">{h.name}</span>
+              {h.availability !== null && (
+                <span
+                  className={cn(
+                    "shrink-0 font-mono font-semibold",
+                    h.availability >= 99.9
+                      ? "text-[#00b875]"
+                      : h.availability >= 95
+                        ? "text-[#e7a23a]"
+                        : "text-[#e64b73]"
+                  )}
+                >
+                  {h.availability.toFixed(2)}%
+                </span>
+              )}
             </span>
           ))}
         </div>
