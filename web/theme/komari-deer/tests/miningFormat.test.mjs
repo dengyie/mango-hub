@@ -103,7 +103,8 @@ test("miningStatusPill only appears when live mining exists", () => {
 });
 
 test("card and live poll wire mining into the CNB-style pill", () => {
-  assert.ok(liveSource.includes("mining: rec.mining ?? undefined"), "live poll dropped mining");
+  assert.ok(liveSource.includes("hashrate_1min"), "live poll dropped mining hashrate");
+  assert.ok(!liveSource.includes("wallet"), "live poll must not keep wallet on the 4s path");
   assert.ok(nodeSource.includes('from "@/utils/miningHelper"'), "Node must import mining helper");
   assert.ok(nodeSource.includes("miningStatusPill(mining)"), "Node must build mining pill");
   assert.ok(nodeSource.includes("mining={live?.mining}"), "Node must pass live mining");

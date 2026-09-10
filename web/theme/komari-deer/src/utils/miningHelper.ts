@@ -18,7 +18,6 @@ export function formatHashrate(hs: number | null | undefined): string {
 export type MiningLive = {
   algorithm?: string;
   hashrate_1min?: number;
-  pool?: string;
 };
 
 export type MiningStatusPill = {

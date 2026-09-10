@@ -21,7 +21,7 @@ func isolateLatestReports(t *testing.T) {
 	})
 }
 
-func TestGetNodesLatestStatusCopiesAndMasksMining(t *testing.T) {
+func TestGetNodesLatestStatusCopiesSlimMining(t *testing.T) {
 	isolateLatestReports(t)
 
 	uuid := "node-mining-live"
@@ -40,43 +40,45 @@ func TestGetNodesLatestStatusCopiesAndMasksMining(t *testing.T) {
 			Pool:         "xel-hk.kryptex.network:7019",
 			Wallet:       fullWallet,
 			Hashrate1Min: 1094.16,
+			SharesValid:  12,
 		},
 	})
-
-	decodeMining := func(t *testing.T, res any) *v1.MiningReport {
-		t.Helper()
-		b, err := json.Marshal(res)
-		if err != nil {
-			t.Fatalf("marshal: %v", err)
-		}
-		var got struct {
-			Mining *v1.MiningReport `json:"mining"`
-		}
-		if err := json.Unmarshal(b, &got); err != nil {
-			t.Fatalf("unmarshal: %v", err)
-		}
-		if got.Mining == nil {
-			t.Fatalf("mining missing in latest status: %s", b)
-		}
-		return got.Mining
-	}
 
 	guestCtx := rpc.NewContextWithMeta(context.Background(), &rpc.ContextMeta{})
 	guestRes, jerr := getNodesLatestStatus(guestCtx, rpc.NewRequest(1, "common:getNodesLatestStatus", map[string]any{"uuid": uuid}))
 	if jerr != nil {
 		t.Fatalf("guest latest status: %+v", jerr)
 	}
-	guestMining := decodeMining(t, guestRes)
-	if guestMining.Wallet != "krxX***D4/vps01" {
-		t.Fatalf("guest wallet = %q, want masked", guestMining.Wallet)
+	b, err := json.Marshal(guestRes)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
 	}
-	if guestMining.Algorithm != "xelishashv3" || guestMining.Hashrate1Min != 1094.16 {
-		t.Fatalf("guest mining payload = %#v", guestMining)
+	var got map[string]any
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	mining, ok := got["mining"].(map[string]any)
+	if !ok {
+		t.Fatalf("mining missing in latest status: %s", b)
+	}
+	if mining["algorithm"] != "xelishashv3" {
+		t.Fatalf("algorithm = %#v", mining["algorithm"])
+	}
+	if mining["hashrate_1min"] != 1094.16 {
+		t.Fatalf("hashrate_1min = %#v", mining["hashrate_1min"])
+	}
+	for _, leaked := range []string{"wallet", "pool", "shares_valid", "shares_total", "power_w"} {
+		if _, present := mining[leaked]; present {
+			t.Fatalf("hot-path mining leaked %q: %s", leaked, b)
+		}
+	}
+	if _, present := got["wallet"]; present {
+		t.Fatalf("wallet leaked at record root: %s", b)
 	}
 
 	stored := agent_runtime.GetLatestReport()[uuid]
 	if stored == nil || stored.Mining == nil || stored.Mining.Wallet != fullWallet {
-		t.Fatalf("guest mask mutated runtime report: %#v", stored)
+		t.Fatalf("slim DTO mutated runtime report: %#v", stored)
 	}
 
 	adminCtx := rpc.NewContextWithMeta(context.Background(), &rpc.ContextMeta{
@@ -86,9 +88,20 @@ func TestGetNodesLatestStatusCopiesAndMasksMining(t *testing.T) {
 	if jerr != nil {
 		t.Fatalf("admin latest status: %+v", jerr)
 	}
-	adminMining := decodeMining(t, adminRes)
-	if adminMining.Wallet != fullWallet {
-		t.Fatalf("admin wallet = %q, want full", adminMining.Wallet)
+	ab, err := json.Marshal(adminRes)
+	if err != nil {
+		t.Fatalf("marshal admin: %v", err)
+	}
+	var adminGot map[string]any
+	if err := json.Unmarshal(ab, &adminGot); err != nil {
+		t.Fatalf("unmarshal admin: %v", err)
+	}
+	adminMining, ok := adminGot["mining"].(map[string]any)
+	if !ok {
+		t.Fatalf("admin mining missing: %s", ab)
+	}
+	if _, present := adminMining["wallet"]; present {
+		t.Fatalf("admin latest-status still carries wallet: %s", ab)
 	}
 }
 

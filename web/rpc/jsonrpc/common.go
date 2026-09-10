@@ -319,6 +319,12 @@ func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 		}
 	}
 
+	// latest-status 每 4s 被首页轮询一次；卡片 pill 只要算法+算力。
+	// 不把钱包/矿池/份额打进热路径（历史详情走 mining_records）。
+	type miningLiveStatus struct {
+		Algorithm    string  `json:"algorithm"`
+		Hashrate1Min float64 `json:"hashrate_1min"`
+	}
 	type recordLike struct {
 		Client         string              `json:"client"`
 		Time           time.Time           `json:"time"`
@@ -341,7 +347,7 @@ func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 		Process        int                 `json:"process"`
 		Connections    int                 `json:"connections"`
 		ConnectionsUdp int                 `json:"connections_udp"`
-		Mining         *v1.MiningReport    `json:"mining,omitempty"`
+		Mining         *miningLiveStatus   `json:"mining,omitempty"`
 		Online         bool                `json:"online"`
 		Uptime         int64               `json:"uptime"`
 		Ping           map[string]pingStat `json:"ping"`
@@ -383,14 +389,11 @@ func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 			Uptime:         rep.Uptime,
 			Ping:           stats,
 		}
-		// GetLatestReport 只浅拷贝 Report：Mining 指针仍指向运行时对象。
-		// 必须先拷再掩码，否则游客路径会把钱包写回 agent 内存。
-		if rep.Mining != nil {
-			copied := *rep.Mining
-			if !isAdmin {
-				copied.Wallet = maskWalletAddr(copied.Wallet)
+		if m := rep.Mining; m != nil {
+			rl.Mining = &miningLiveStatus{
+				Algorithm:    m.Algorithm,
+				Hashrate1Min: m.Hashrate1Min,
 			}
-			rl.Mining = &copied
 		}
 		respMap[uuid] = rl
 	}

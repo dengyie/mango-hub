@@ -112,7 +112,12 @@ export const LiveDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               udp: rec.connections_udp ?? 0,
             },
             gpu: rec.gpu !== undefined ? { count: 0, average_usage: rec.gpu, detailed_info: [] } : undefined,
-            mining: rec.mining ?? undefined,
+            mining: rec.mining
+              ? {
+                  algorithm: rec.mining.algorithm ?? "",
+                  hashrate_1min: Number(rec.mining.hashrate_1min) || 0,
+                }
+              : undefined,
             uptime: rec.uptime ?? 0,
             process: rec.process ?? 0,
             message: "",
