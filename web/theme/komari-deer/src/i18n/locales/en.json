@@ -939,5 +939,11 @@
     "shares_valid": "Valid",
     "shares_stale": "Stale",
     "shares_invalid": "Invalid"
+  },
+  "earnings": {
+    "total": "Total Balance",
+    "available": "Available",
+    "day": "Today Earned",
+    "trend24h": "24h Trend"
   }
 }

@@ -10,7 +10,7 @@ type Settings struct {
 	CorsAllowedOrigins     string `json:"cors_allowed_origins" default:""`                     // API 跨域允许列表
 	WsOriginCheckEnabled   bool   `json:"ws_origin_check_enabled" default:"true"`              // 是否校验 WebSocket Origin
 	WsAllowedOrigins       string `json:"ws_allowed_origins" default:""`                       // WebSocket Origin 允许列表
-	Theme                  string `json:"theme" default:"komari-deer"`                          // 主题名称，默认内置 deer 主题
+	Theme                  string `json:"theme" default:"komari-deer"`                         // 主题名称，默认内置 deer 主题
 	PrivateSite            bool   `json:"private_site" default:"false"`                        // 是否为私有站点，默认 false
 	ApiKey                 string `json:"api_key" default:""`                                  // API 密钥，默认空字符串
 	AutoDiscoveryKey       string `json:"auto_discovery_key" default:""`                       // 自动发现密钥
@@ -39,6 +39,10 @@ type Settings struct {
 	LoginNotification          bool    `json:"login_notification" default:"true"`          // 登录通知
 	TrafficLimitPercentage     float64 `json:"traffic_limit_percentage" default:"80.00"`   // 流量限制百分比，默认80.00%
 	UpdatedAt                  time.Time
+
+	// 挖矿收益轮询（账户级，与节点无关）。Cookie 由管理员从已登录浏览器复制，
+	// 仅保存在服务端配置里，绝不通过任何公开接口返回。
+	KryptexSessionCookie string `json:"kryptex_session_cookie" default:""`
 }
 
 const (
@@ -76,4 +80,6 @@ const (
 	XtermjsSettingsKey            = "xtermjs_settings"
 	ThemeMarketSourcesKey         = "theme_market_sources"
 	PluginMarketSourcesKey        = "plugin_market_sources"
+
+	KryptexSessionCookieKey = "kryptex_session_cookie"
 )
