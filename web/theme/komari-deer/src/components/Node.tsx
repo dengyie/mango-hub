@@ -17,6 +17,7 @@ import CircleChart from "./CircleChart";
 import LoadChartFloat from "./LoadChartFloat";
 import Tips from "./ui/tips";
 import { filterCnbReachability, isCnbProxyHost } from "@/utils/cnb";
+import { miningStatusPill } from "@/utils/miningHelper";
 
 /** Format seconds into readable uptime */
 export function formatUptime(seconds: number, t: TFunction): string {
@@ -212,12 +213,105 @@ function CompactMetricBarStrip({
   );
 }
 
-function CompactPingTimeline({ pingStats, t }: { pingStats: PingStats; t: TFunction }) {
+function StatusPills({
+  items,
+}: {
+  items: {
+    key: string;
+    name: string;
+    up: boolean | null;
+    metric?: string;
+    metricClassName?: string;
+    title: string;
+  }[];
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {items.map((h) => (
+        <span
+          key={h.key}
+          className="inline-flex max-w-[200px] items-center gap-1.5 rounded-full border border-[#2a3a52]/40 bg-[#0d1320]/80 px-2 py-0.5 text-[10px] leading-none text-[#8f98ac]"
+          title={h.title}
+        >
+          <span
+            className={cn(
+              "h-1.5 w-1.5 shrink-0 rounded-full",
+              h.up === null
+                ? "bg-[#3a4a66]"
+                : h.up
+                  ? "bg-[#00b875]"
+                  : "bg-[#e64b73]"
+            )}
+          />
+          <span className="truncate">{h.name}</span>
+          {h.metric != null && h.metric !== "" && (
+            <span className={cn("shrink-0 font-mono font-semibold", h.metricClassName)}>
+              {h.metric}
+            </span>
+          )}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function CompactPingTimeline({
+  pingStats,
+  mining,
+  t,
+}: {
+  pingStats: PingStats;
+  mining?: Record["mining"];
+  t: TFunction;
+}) {
+  const miningPill = miningStatusPill(mining);
+  const httpPills = pingStats.httpReachability.map((h) => ({
+    key: `http:${h.name}`,
+    name: h.name,
+    up: h.up,
+    metric: h.availability !== null ? `${h.availability.toFixed(2)}%` : undefined,
+    metricClassName:
+      h.availability === null
+        ? undefined
+        : h.availability >= 99.9
+          ? "text-[#00b875]"
+          : h.availability >= 95
+            ? "text-[#e7a23a]"
+            : "text-[#e64b73]",
+    title:
+      h.up === null
+        ? t("nodeCard.noPingData")
+        : h.availability !== null
+          ? `${h.availability.toFixed(2)}% · ${h.up ? t("nodeCard.online") : t("nodeCard.offline")}`
+          : h.up
+            ? t("nodeCard.online")
+            : t("nodeCard.offline"),
+  }));
+  const statusPills = [
+    ...(miningPill
+      ? [
+          {
+            key: "mining",
+            name: miningPill.name,
+            up: miningPill.up,
+            metric: miningPill.metric,
+            metricClassName: miningPill.up ? "text-[#00b875]" : "text-[#e64b73]",
+            title: miningPill.title,
+          },
+        ]
+      : []),
+    ...httpPills,
+  ];
+
   if (!pingStats.hasData) {
     return (
-      <div className="flex h-[62px] items-center justify-between text-[12px] select-none">
-        <span className="font-medium text-[#8f98ac]">Ping Stats (1h)</span>
-        <span className="text-[12px] italic text-[#848da3]">{t("nodeCard.noPingData")}</span>
+      <div className="space-y-2 select-none">
+        <div className="flex h-[62px] items-center justify-between text-[12px]">
+          <span className="font-medium text-[#8f98ac]">Ping Stats (1h)</span>
+          <span className="text-[12px] italic text-[#848da3]">{t("nodeCard.noPingData")}</span>
+        </div>
+        <StatusPills items={statusPills} />
       </div>
     );
   }
@@ -234,52 +328,8 @@ function CompactPingTimeline({ pingStats, t }: { pingStats: PingStats; t: TFunct
         </span>
       </div>
 
-      {/* HTTP 类型任务按可达性展示,不参与 latency/loss 阈值色条 */}
-      {pingStats.httpReachability.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {pingStats.httpReachability.map((h) => (
-            <span
-              key={h.name}
-              className="inline-flex max-w-[200px] items-center gap-1.5 rounded-full border border-[#2a3a52]/40 bg-[#0d1320]/80 px-2 py-0.5 text-[10px] leading-none text-[#8f98ac]"
-              title={
-                h.up === null
-                  ? t("nodeCard.noPingData")
-                  : h.availability !== null
-                    ? `${h.availability.toFixed(2)}% · ${h.up ? t("nodeCard.online") : t("nodeCard.offline")}`
-                    : h.up
-                      ? t("nodeCard.online")
-                      : t("nodeCard.offline")
-              }
-            >
-              <span
-                className={cn(
-                  "h-1.5 w-1.5 shrink-0 rounded-full",
-                  h.up === null
-                    ? "bg-[#3a4a66]"
-                    : h.up
-                      ? "bg-[#00b875]"
-                      : "bg-[#e64b73]"
-                )}
-              />
-              <span className="truncate">{h.name}</span>
-              {h.availability !== null && (
-                <span
-                  className={cn(
-                    "shrink-0 font-mono font-semibold",
-                    h.availability >= 99.9
-                      ? "text-[#00b875]"
-                      : h.availability >= 95
-                        ? "text-[#e7a23a]"
-                        : "text-[#e64b73]"
-                  )}
-                >
-                  {h.availability.toFixed(2)}%
-                </span>
-              )}
-            </span>
-          ))}
-        </div>
-      )}
+      {/* HTTP 可达性 + 矿工 live 状态，同款圆点 pill */}
+      <StatusPills items={statusPills} />
 
       <div className="grid grid-cols-2 gap-2">
         <CompactMetricBarStrip
@@ -504,7 +554,11 @@ const Node = ({ basic, live, online }: NodeProps) => {
 
         <div className="h-4" />
 
-        <CompactPingTimeline pingStats={{ ...pingStats, httpReachability }} t={t} />
+        <CompactPingTimeline
+          pingStats={{ ...pingStats, httpReachability }}
+          mining={live?.mining}
+          t={t}
+        />
 
         {basic.traffic_limit > 0 && (
           <div className="mt-2.5 space-y-1.5 select-none">

@@ -42,6 +42,22 @@ export type Record = {
       temperature: number;
     }[];
   };
+  mining?: {
+    algorithm: string;
+    pool: string;
+    wallet: string;
+    hashrate_1min: number;
+    hashrate_1hr: number;
+    power_w: number;
+    temperature: number;
+    fan_percent: number;
+    shares_total: number;
+    shares_valid: number;
+    shares_stale: number;
+    shares_invalid: number;
+    hw_errors: number;
+    pool_latency: number;
+  };
   uptime: number;
   process: number;
   message: string;

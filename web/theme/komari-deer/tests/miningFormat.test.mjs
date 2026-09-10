@@ -9,6 +9,14 @@ const source = readFileSync(
   new URL("../src/utils/miningHelper.ts", import.meta.url),
   "utf8"
 );
+const nodeSource = readFileSync(
+  new URL("../src/components/Node.tsx", import.meta.url),
+  "utf8"
+);
+const liveSource = readFileSync(
+  new URL("../src/contexts/LiveDataContext.tsx", import.meta.url),
+  "utf8"
+);
 
 // 内联复算 formatHashrate（与 src/utils/miningHelper.ts 一一对应）
 function formatHashrate(hs) {
@@ -51,4 +59,53 @@ test("formatHashrate picks digit precision by magnitude", () => {
   assert.equal(formatHashrate(999), "999 H/s"); // >=100 → 0 位小数
   assert.equal(formatHashrate(1049), "1.05 kH/s"); // 1.05 → 2 位小数
   assert.equal(formatHashrate(5.25), "5.25 H/s"); // <10 → 2 位小数
+});
+
+function miningStatusPill(mining) {
+  if (!mining || typeof mining !== "object") return null;
+  const hs = Number(mining.hashrate_1min);
+  const up = Number.isFinite(hs) && hs > 0;
+  const name = String(mining.algorithm ?? "").trim() || "Mining";
+  const metric = formatHashrate(up ? hs : 0);
+  return {
+    name,
+    up,
+    metric,
+    title: up ? `${name} · ${metric}` : `${name} · idle`,
+  };
+}
+
+test("source keeps miningStatusPill in sync with inlined copy", () => {
+  assert.ok(source.includes("export function miningStatusPill"), "miningStatusPill missing");
+  assert.ok(source.includes('String(mining.algorithm ?? "").trim() || "Mining"'), "algorithm fallback changed");
+  assert.ok(source.includes("${name} · idle"), "idle title changed");
+  assert.ok(!source.includes("wallet"), "pill must not mention wallet");
+});
+
+test("miningStatusPill only appears when live mining exists", () => {
+  assert.equal(miningStatusPill(null), null);
+  assert.equal(miningStatusPill(undefined), null);
+  const xel = miningStatusPill({ algorithm: "xelishashv3", hashrate_1min: 1094.16, wallet: "krxXGNKMD4/vps01" });
+  assert.deepEqual(xel, {
+    name: "xelishashv3",
+    up: true,
+    metric: "1.09 kH/s",
+    title: "xelishashv3 · 1.09 kH/s",
+  });
+  assert.ok(!JSON.stringify(xel).includes("krxX"));
+  const idle = miningStatusPill({ algorithm: "pearlhash", hashrate_1min: 0 });
+  assert.equal(idle.up, false);
+  assert.equal(idle.metric, "0 H/s");
+  assert.equal(idle.title, "pearlhash · idle");
+  const unnamed = miningStatusPill({ hashrate_1min: 62403052604616.36 });
+  assert.equal(unnamed.name, "Mining");
+  assert.equal(unnamed.metric, "62.4 TH/s");
+});
+
+test("card and live poll wire mining into the CNB-style pill", () => {
+  assert.ok(liveSource.includes("mining: rec.mining ?? undefined"), "live poll dropped mining");
+  assert.ok(nodeSource.includes('from "@/utils/miningHelper"'), "Node must import mining helper");
+  assert.ok(nodeSource.includes("miningStatusPill(mining)"), "Node must build mining pill");
+  assert.ok(nodeSource.includes("mining={live?.mining}"), "Node must pass live mining");
+  assert.ok(nodeSource.includes('key: "mining"'), "mining pill must sit in the status row");
 });

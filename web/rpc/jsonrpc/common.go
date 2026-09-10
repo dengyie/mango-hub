@@ -383,11 +383,13 @@ func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 			Uptime:         rep.Uptime,
 			Ping:           stats,
 		}
-		// 挖矿钱包地址是资金属性信息，游客只给掩码版（管理员看全量）。
-		// agent_runtime 返回的是报告副本，原地改安全。
-		if !isAdmin && rl.Mining != nil {
-			copied := *rl.Mining
-			copied.Wallet = maskWalletAddr(copied.Wallet)
+		// GetLatestReport 只浅拷贝 Report：Mining 指针仍指向运行时对象。
+		// 必须先拷再掩码，否则游客路径会把钱包写回 agent 内存。
+		if rep.Mining != nil {
+			copied := *rep.Mining
+			if !isAdmin {
+				copied.Wallet = maskWalletAddr(copied.Wallet)
+			}
 			rl.Mining = &copied
 		}
 		respMap[uuid] = rl

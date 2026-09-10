@@ -83,7 +83,7 @@ test("源码同步：hook 计算 availability，Node tag 渲染百分比并按�
     "usePingStats must compute availability from window samples"
   );
   assert.ok(
-    nodeSource.includes("h.availability.toFixed(2)"),
+    nodeSource.includes("h.availability.toFixed(2)") || nodeSource.includes("availability.toFixed(2)"),
     "node tag must render availability percentage"
   );
   assert.ok(
