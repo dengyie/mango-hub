@@ -3,6 +3,7 @@ package jsonrpc
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -108,7 +109,9 @@ func TestGetRecordsByUUIDAcceptsMiningAndGpuLoadTypes(t *testing.T) {
 	if !ok || len(records) != 1 {
 		t.Fatalf("mining_records = %#v, want 1 record", resp["mining_records"])
 	}
-	if records[0].Rig != "krxXGNKMD4/test" || records[0].Hashrate != 1e12 {
+	// 游客路径：rig 已掩码（完整地址断言由 TestGuestMiningRecordsMaskWallet /
+	// TestMaskWalletAddr 承担；这里只需断言掩码值与算力透传）
+	if records[0].Rig != "krxX***D4/test" || records[0].Hashrate != 1e12 {
 		t.Fatalf("mining record = %#v", records[0])
 	}
 
@@ -124,5 +127,70 @@ func TestGetRecordsByUUIDAcceptsMiningAndGpuLoadTypes(t *testing.T) {
 	// 未知 load_type 仍应拒绝
 	if _, jerr = callGetRecordsByUUID(t, "node-mining", "bogus", "4"); jerr == nil {
 		t.Fatal("load_type=bogus accepted, want Invalid params")
+	}
+}
+
+// 游客访问 /api/records/load 时 mining_records.rig 必须是掩码钱包，
+// 不能出现完整地址（Finding 4 收敛：地址是资金属性信息）。
+func TestGuestMiningRecordsMaskWallet(t *testing.T) {
+	useMetricsTestStore(t)
+	ctx := context.Background()
+
+	db := dbcore.GetDBInstance()
+	db.Where("uuid = ?", "node-mask").Delete(&models.Client{})
+	if err := db.Create(&models.Client{UUID: "node-mask", Name: "mask", Token: "mask-token"}).Error; err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	// 样本锚在已结束的分钟且等 now 跨过该边界，避免 End=now 排除样本
+	base := time.Now().UTC().Truncate(time.Minute).Add(-39 * time.Second)
+	report := v1.Report{
+		UUID:      "node-mask",
+		UpdatedAt: base,
+		Mining: &v1.MiningReport{
+			Algorithm:    "pearlhash",
+			Pool:         "prl-eu.kryptex.network:7048",
+			Wallet:       "krxXGNKMD4/home-win",
+			Hashrate1Min: 1e12,
+		},
+	}
+	if _, err := metricstore.WriteReport(ctx, report); err != nil {
+		t.Fatalf("write report: %v", err)
+	}
+	if err := metricstore.FlushReportBatch(ctx); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	// rpc.Invoke 无登录态上下文 → 游客路径
+	resp, jerr := callGetRecordsByUUID(t, "node-mask", "mining", "4")
+	if jerr != nil {
+		t.Fatalf("load_type=mining rejected: %+v", jerr)
+	}
+	records, ok := resp["mining_records"].([]metricstore.MiningRecord)
+	if !ok || len(records) != 1 {
+		t.Fatalf("mining_records = %#v", resp["mining_records"])
+	}
+	rig := records[0].Rig
+	if rig != "krxX***D4/home-win" {
+		t.Fatalf("rig = %q, want krxX***D4/home-win", rig)
+	}
+	if strings.Contains(rig, "krxXGNKMD4") {
+		t.Fatalf("full wallet leaked to guest: %q", rig)
+	}
+}
+
+func TestMaskWalletAddr(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"krxXGNKMD4/home-win", "krxX***D4/home-win"},
+		{"0x1234567890abcdef", "0x12***ef"},
+		{"short1", "short1"},     // <=6 原样
+		{"", ""},                 // 空串
+		{"ab/cd", "ab/cd"},       // 地址部分太短
+		{"XEN9999999999", "XEN9***99"},
+	}
+	for _, c := range cases {
+		if got := maskWalletAddr(c.in); got != c.want {
+			t.Errorf("maskWalletAddr(%q) = %q, want %q", c.in, got, c.want)
+		}
 	}
 }

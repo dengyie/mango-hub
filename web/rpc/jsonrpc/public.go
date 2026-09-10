@@ -3,6 +3,7 @@ package jsonrpc
 import (
 	"context"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/komari-monitor/komari/database"
@@ -211,6 +212,9 @@ func publicGetRecordsByUUID(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 	if params.LoadType == "" || params.LoadType == "all" || params.LoadType == "mining" {
 		miningRecords, err := metricstore.GetMiningRecordsByClientAndTime(context.Background(), params.UUID, now.Add(-time.Duration(hoursInt)*time.Hour), now)
 		if err == nil && len(miningRecords) > 0 {
+			if !isLoginFromCtx(ctx) {
+				maskMiningRecordRigs(miningRecords)
+			}
 			response["mining_records"] = miningRecords
 			response["has_mining_data"] = true
 		} else {
@@ -218,6 +222,30 @@ func publicGetRecordsByUUID(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 		}
 	}
 	return response, nil
+}
+
+// maskWalletAddr 掩码钱包地址（rig tag = wallet/worker）：保留前 4 后 2，
+// 中段打星；worker 名（"/" 之后）是机器标识不是资金信息，保留以维持可读性。
+// 例：krxXGNKMD4/home-win → krxX***D4/home-win。空串与已掩码值原样返回。
+func maskWalletAddr(w string) string {
+	slash := strings.IndexByte(w, '/')
+	worker := ""
+	addr := w
+	if slash >= 0 {
+		worker = w[slash:]
+		addr = w[:slash]
+	}
+	if len(addr) <= 6 {
+		return w
+	}
+	return addr[:4] + "***" + addr[len(addr)-2:] + worker
+}
+
+// maskMiningRecordRigs 原地掩码历史记录的钱包地址（游客可见性收敛，见 Finding 4）。
+func maskMiningRecordRigs(records []metricstore.MiningRecord) {
+	for i := range records {
+		records[i].Rig = maskWalletAddr(records[i].Rig)
+	}
 }
 
 func publicGetPublicPingTasks(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {

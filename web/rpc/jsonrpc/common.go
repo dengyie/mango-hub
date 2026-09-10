@@ -293,7 +293,8 @@ func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 	}
 
 	// Hidden 过滤
-	if meta.Principal == nil || !meta.Principal.HasRole(rpc.RoleAdmin) {
+	isAdmin := meta.Principal != nil && meta.Principal.HasRole(rpc.RoleAdmin)
+	if !isAdmin {
 		cinfo, err := clients.GetAllClientBasicInfo()
 		if err != nil {
 			return nil, rpc.MakeError(rpc.InternalError, "Failed to get client info", err.Error())
@@ -378,10 +379,16 @@ func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 			Process:        rep.Process,
 			Connections:    rep.Connections.TCP + rep.Connections.UDP,
 			ConnectionsUdp: rep.Connections.UDP,
-			Mining:         rep.Mining,
 			Online:         onlineSet[uuid],
 			Uptime:         rep.Uptime,
 			Ping:           stats,
+		}
+		// 挖矿钱包地址是资金属性信息，游客只给掩码版（管理员看全量）。
+		// agent_runtime 返回的是报告副本，原地改安全。
+		if !isAdmin && rl.Mining != nil {
+			copied := *rl.Mining
+			copied.Wallet = maskWalletAddr(copied.Wallet)
+			rl.Mining = &copied
 		}
 		respMap[uuid] = rl
 	}
