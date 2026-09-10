@@ -132,6 +132,16 @@ func isHiddenClient(uuid string) bool {
 	return false
 }
 
+// validRecordsLoadTypes 是 /api/records/load 的 load_type 白名单，
+// 必须与下方 publicGetRecordsByUUID 内的分支条件保持一致（gpu/mining 是数据子集过滤，
+// 与 cpu/ram 等字段过滤不同：命中时仍需要全量 records 来重建 gpu_devices/mining_records）。
+var validRecordsLoadTypes = map[string]bool{
+	"cpu": true, "ram": true, "swap": true,
+	"load": true, "temp": true, "disk": true, "network": true,
+	"process": true, "connections": true, "all": true, "": true,
+	"gpu": true, "mining": true,
+}
+
 func publicGetRecordsByUUID(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
 	var params struct {
 		UUID     string `json:"uuid"`
@@ -154,12 +164,7 @@ func publicGetRecordsByUUID(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid hours parameter", nil)
 	}
-	validLoadTypes := map[string]bool{
-		"cpu": true, "ram": true, "swap": true,
-		"load": true, "temp": true, "disk": true, "network": true,
-		"process": true, "connections": true, "all": true, "": true,
-	}
-	if !validLoadTypes[params.LoadType] {
+	if !validRecordsLoadTypes[params.LoadType] {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid load_type parameter", nil)
 	}
 	now := time.Now().UTC()

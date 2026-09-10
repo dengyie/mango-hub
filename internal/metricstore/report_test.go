@@ -503,6 +503,127 @@ func TestWriteReportStoresMiningMetricsAndHistory(t *testing.T) {
 	}
 }
 
+// 多桶场景：history 记录经 recordMap 合并后 map 迭代顺序随机，返回前必须按
+// rig+时间排序（前端 records[length-1] 取 latest、XAxis 按数组顺序绘图）。
+// 每个 rig 每个时刻只有一份快照（agent 一节点一上报），钱包切换后 rig 随时间交错。
+func TestGetMiningRecordsSortedByRigAndTime(t *testing.T) {
+	ctx := context.Background()
+	policy := defaultRollupPolicy()
+	useReportTestStore(t, &policy)
+	// 桶边界按 interval 对齐（bucketStartMillis），base 对齐到分钟让时间戳落在可预期的桶
+	base := time.Now().UTC().Truncate(time.Minute)
+
+	// rig-b 先起挖，之后切到 rig-a：两条 series 的时间桶交错
+	writes := []struct {
+		ts  time.Time
+		rig string
+	}{
+		{base.Add(1 * time.Minute), "rig-b"},
+		{base.Add(2 * time.Minute), "rig-b"},
+		{base.Add(3 * time.Minute), "rig-a"},
+		{base.Add(4 * time.Minute), "rig-a"},
+	}
+	for _, w := range writes {
+		report := v1.Report{
+			UUID:      "mining-node",
+			UpdatedAt: w.ts,
+			Mining: &v1.MiningReport{
+				Algorithm:    "pearlhash",
+				Pool:         "prl-eu.kryptex.network:7048",
+				Wallet:       w.rig,
+				Hashrate1Min: 1e12,
+			},
+		}
+		if _, err := WriteReport(ctx, report); err != nil {
+			t.Fatalf("write report %s@%d: %v", w.rig, w.ts.Unix(), err)
+		}
+	}
+	if err := FlushReportBatch(ctx); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	// 乱序与否取决于 map 迭代顺序：多次独立查询重复断言锁死排序
+	for attempt := 0; attempt < 20; attempt++ {
+		records, err := GetMiningRecordsByClientAndTime(ctx, "mining-node", base, base.Add(5*time.Minute))
+		if err != nil {
+			t.Fatalf("query mining history: %v", err)
+		}
+		if len(records) != 4 {
+			t.Fatalf("mining records = %d, want 4", len(records))
+		}
+		for i := 1; i < len(records); i++ {
+			prev, cur := records[i-1], records[i]
+			if prev.Rig != cur.Rig && prev.Rig >= cur.Rig {
+				t.Fatalf("records not sorted by rig: %q after %q", cur.Rig, prev.Rig)
+			}
+			if prev.Rig == cur.Rig && !prev.Time.Before(cur.Time) {
+				t.Fatalf("records not sorted by time within rig %q: %v after %v", cur.Rig, cur.Time, prev.Time)
+			}
+		}
+		// rig 按字典序分组（rig-a 在前），组内按时间升序（排序语义的两层都必须成立）
+		if records[0].Rig != "rig-a" || !records[0].Time.Equal(base.Add(3*time.Minute)) {
+			t.Fatalf("first record = %s@%v, want rig-a@%v", records[0].Rig, records[0].Time, base.Add(3*time.Minute))
+		}
+		last := records[len(records)-1]
+		if last.Rig != "rig-b" || !last.Time.Equal(base.Add(2*time.Minute)) {
+			t.Fatalf("last record = %s@%v, want rig-b@%v", last.Rig, last.Time, base.Add(2*time.Minute))
+		}
+	}
+}
+
+// 同款排序回归覆盖 GPU 历史路径（按 device_index+时间；每个设备每桶一条，
+// 多设备 series 交错时 map 迭代顺序同样随机）。
+func TestGetGPURecordsSortedByDeviceAndTime(t *testing.T) {
+	ctx := context.Background()
+	policy := defaultRollupPolicy()
+	useReportTestStore(t, &policy)
+	// 桶边界按 interval 对齐（bucketStartMillis），base 对齐到分钟让时间戳落在可预期的桶
+	base := time.Now().UTC().Truncate(time.Minute)
+
+	for _, ts := range []time.Time{
+		base.Add(1 * time.Minute),
+		base.Add(2 * time.Minute),
+		base.Add(3 * time.Minute),
+	} {
+		report := v1.Report{
+			UUID:      "gpu-node",
+			UpdatedAt: ts,
+			GPU: &v1.GPUDetailReport{
+				AverageUsage: 15,
+				DetailedInfo: []v1.GPUDeviceInfo{
+					{Utilization: 10, Temperature: 60, MemoryUsed: 1024, MemoryTotal: 8192, Name: "GPU B"},
+					{Utilization: 20, Temperature: 50, MemoryUsed: 2048, MemoryTotal: 8192, Name: "GPU A"},
+				},
+			},
+		}
+		if _, err := WriteReport(ctx, report); err != nil {
+			t.Fatalf("write gpu report: %v", err)
+		}
+	}
+	if err := FlushReportBatch(ctx); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	for attempt := 0; attempt < 20; attempt++ {
+		records, err := GetGPURecordsByClientAndTime(ctx, "gpu-node", base, base.Add(4*time.Minute))
+		if err != nil {
+			t.Fatalf("query gpu history: %v", err)
+		}
+		if len(records) != 6 {
+			t.Fatalf("gpu records = %d, want 6 (2 devices x 3 buckets)", len(records))
+		}
+		for i := 1; i < len(records); i++ {
+			prev, cur := records[i-1], records[i]
+			if prev.DeviceIndex != cur.DeviceIndex && prev.DeviceIndex >= cur.DeviceIndex {
+				t.Fatalf("records not sorted by device index: %d after %d", cur.DeviceIndex, prev.DeviceIndex)
+			}
+			if prev.DeviceIndex == cur.DeviceIndex && !prev.Time.Before(cur.Time) {
+				t.Fatalf("records not sorted by time within device %d: %v after %v", cur.DeviceIndex, cur.Time, prev.Time)
+			}
+		}
+	}
+}
+
 func TestGetGPURecordsPreservesDeviceTagsAcrossRollups(t *testing.T) {
 	ctx := context.Background()
 	policy := defaultRollupPolicy()

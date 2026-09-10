@@ -263,6 +263,31 @@ func GetStore() *metric.Store {
 	return store
 }
 
+// SwapStoreForTest 以传入 store 替换全局实例，返回还原函数。仅测试使用：
+// jsonrpc 等上层包的集成测试需要在不走 InitializeStore/配置链路的情况下
+// 挂载内存 metric store。关闭/还原语义与 Reload 一致（旧的由调用方关闭，
+// 这里关闭传入之前的实例）。
+func SwapStoreForTest(t interface {
+	Helper()
+	Cleanup(func())
+}, s *metric.Store) (restore func()) {
+	t.Helper()
+	storeMu.Lock()
+	old := store
+	store = s
+	storeFingerprint = ""
+	storeMu.Unlock()
+	clearReportTrafficStates()
+	return func() {
+		storeMu.Lock()
+		store = old
+		storeFingerprint = ""
+		storeMu.Unlock()
+		clearReportTrafficStates()
+		_ = s.Close()
+	}
+}
+
 // CloseStoreContext stops the asynchronous store migration before taking the
 // store write lock, so shutdown cannot wait forever on the migration's lease.
 func CloseStoreContext(ctx context.Context) error {

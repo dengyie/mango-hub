@@ -309,11 +309,18 @@ func GetGPURecordsByClientAndTime(ctx context.Context, clientUUID string, start,
 		}
 	}
 
-	// 转换为切片
+	// 转换为切片。recordMap 是多指标合并后的 map，迭代顺序随机；
+	// 前端按数组下标取 latest/绘图，必须先按设备+时间排序（同 sortRecords 约定）。
 	records := make([]models.GPURecord, 0, len(recordMap))
 	for _, rec := range recordMap {
 		records = append(records, *rec)
 	}
+	sort.Slice(records, func(i, j int) bool {
+		if records[i].DeviceIndex != records[j].DeviceIndex {
+			return records[i].DeviceIndex < records[j].DeviceIndex
+		}
+		return records[i].Time.Before(records[j].Time)
+	})
 
 	return records, nil
 }
@@ -407,10 +414,18 @@ func GetMiningRecordsByClientAndTime(ctx context.Context, clientUUID string, sta
 		}
 	}
 
+	// recordMap 是多指标合并后的 map，迭代顺序随机；前端按数组下标取 latest
+	// 并直接按顺序绘图，必须先按 rig+时间排序（同 sortRecords 约定）。
 	records := make([]MiningRecord, 0, len(recordMap))
 	for _, rec := range recordMap {
 		records = append(records, *rec)
 	}
+	sort.Slice(records, func(i, j int) bool {
+		if records[i].Rig != records[j].Rig {
+			return records[i].Rig < records[j].Rig
+		}
+		return records[i].Time.Before(records[j].Time)
+	})
 	return records, nil
 }
 
