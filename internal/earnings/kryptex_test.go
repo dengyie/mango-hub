@@ -40,6 +40,16 @@ const sampleHTML = `
   <div class="bal-breakdown__label" style="display:flex;align-items:center;gap:5px;">
     <span style="width:7px;height:7px;border-radius:50%;background:#f59e0b;flex-shrink:0;"></span>
     Pending
+    
+    <span style="color:#d1d5db;">•</span>
+    <span tabindex="0" class="bal-pending-coins__summary" data-pos="bottom" data-tip-pre
+      data-tip="PRL  0.00000549 BTC
+USDT  0.00000002 BTC
+XMR  0.00000003 BTC">
+      By coin
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M12 22"/></svg>
+    </span>
+    
   </div>
   <div class="bal-breakdown__value" style="font-size:12px;">0.00000570 BTC</div>
 </div>

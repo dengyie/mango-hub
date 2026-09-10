@@ -56,8 +56,13 @@ var (
 	kpiRe = regexp.MustCompile(
 		`bal-kpi-title"[^>]*>\s*([^<]+?)\s*<[\s\S]{0,300}?class="h2[^"]*"[^>]*>\s*([0-9.]+)\s*BTC`)
 	// 分项卡（Available / Pending）：label 与 value 是相邻 div。
-	breakdownRe = regexp.MustCompile(
-		`bal-breakdown__label"[^>]*>\s*(?:<[^>]+>\s*)*([^<]+?)\s*</div>\s*<div class="bal-breakdown__value[^"]*"[^>]*>\s*([0-9.]+)\s*BTC`)
+	// Pending 的 label 里在标题文本后还嵌着 "By coin" 提示 span（span 文本
+	// 里还有多行币种明细），所以 label 模式停在标题后的 "<"（RE2 无 lookahead，
+	// 搜索起点回退一字节把该 "<" 还给 tail），再向后找 label 闭合与 value。
+	breakdownLabelRe = regexp.MustCompile(
+		`bal-breakdown__label"[^>]*>\s*(?:<[^>]+>\s*)*([^<]+?)\s*<`)
+	breakdownValueAfterRe = regexp.MustCompile(
+		`</div>\s*<div class="bal-breakdown__value[^"]*"[^>]*>\s*([0-9.]+)\s*BTC`)
 	// 流水条目：meta 里是时间文本，随后 400 字符内的 bal-feed__value
 	// span 是金额；正向条目带 bal-feed__value--positive 类。
 	entryRe = regexp.MustCompile(
@@ -94,9 +99,19 @@ func ParseBalancePage(html string, now time.Time) (*BalancePage, error) {
 			// Bitcoin Rate 等汇率卡片：复用同一标题结构，跳过
 		}
 	}
-	for _, m := range breakdownRe.FindAllStringSubmatch(html, -1) {
-		title := strings.TrimSpace(m[1])
-		v, err := strconv.ParseFloat(m[2], 64)
+	for _, loc := range breakdownLabelRe.FindAllStringSubmatchIndex(html, -1) {
+		title := strings.TrimSpace(html[loc[2]:loc[3]])
+		// 从标题文本结束处（含其后的 "<"）向后找相邻的 value div，
+		// 仅在 label 之后的有限窗口内匹配，避免跨卡误配。
+		tail := html[loc[1]-1:]
+		if len(tail) > 2048 {
+			tail = tail[:2048]
+		}
+		vm := breakdownValueAfterRe.FindStringSubmatch(tail)
+		if vm == nil {
+			continue
+		}
+		v, err := strconv.ParseFloat(vm[1], 64)
 		if err != nil {
 			continue
 		}
