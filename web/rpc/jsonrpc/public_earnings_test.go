@@ -40,6 +40,15 @@ func TestPublicGetMiningEarningsHourlyAndLatest(t *testing.T) {
 	initEarningsTestDB(t)
 	db := dbcore.GetDBInstance()
 	base := time.Now().UTC().Add(-3 * time.Hour).Truncate(time.Hour)
+	// 混入另一个 source 的行：hourly 差值序列必须只基于 kryptex，
+	// 否则两种来源交错会把对方当"前一小时"算出错误的 earned_btc。
+	other := models.MiningEarningsSnapshot{
+		Source: "otherpool", HourUTC: base.Add(30 * time.Minute), TotalBTC: 99,
+		FetchedAt: base.Add(30 * time.Minute),
+	}
+	if err := db.Create(&other).Error; err != nil {
+		t.Fatalf("seed other source: %v", err)
+	}
 	// 三小时快照：total 递增（模拟挖矿收益增长）
 	totals := []float64{0.00001000, 0.00001238, 0.00001506}
 	for i, total := range totals {

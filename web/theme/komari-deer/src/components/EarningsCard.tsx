@@ -51,13 +51,17 @@ export function EarningsCard() {
   if (!data?.enabled || !data.latest) return null;
   const { latest, hourly } = data;
 
-  // 近 24h 增速 = 最近快照 - 25 小时前快照（不足则取首个样本）
+  // 近 24h 增速 = 最近快照 - 基准快照。基准按时间戳选（24 小时内最早
+  // 的一条），不按条目数：快照序列有空洞（轮询失败/重启缺行）时，
+  // 数第 25 条会取到 24+ 小时前的样本，窗口被放大、增速虚高。
   let trend = 0;
   if (hourly && hourly.length > 1) {
-    const lastTotal = hourly[hourly.length - 1].total_btc;
+    const last = hourly[hourly.length - 1];
+    const lastMs = Date.parse(last.hour_utc);
+    const cutoff = lastMs - 24 * 60 * 60 * 1000;
     const base =
-      hourly.length >= 25 ? hourly[hourly.length - 25].total_btc : hourly[0].total_btc;
-    trend = Math.max(0, lastTotal - base);
+      hourly.find((h) => Date.parse(h.hour_utc) >= cutoff) ?? hourly[0];
+    trend = Math.max(0, last.total_btc - base.total_btc);
   }
 
   const items = [

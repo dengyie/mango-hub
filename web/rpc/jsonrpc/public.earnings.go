@@ -25,8 +25,12 @@ import (
 //
 // earned_btc 为相邻小时快照 total 的差值（正值），用于前端画增速曲线；
 // 首个样本因没有前值返回 0。功能未启用（无任何快照）时 enabled=false。
+// 只读单一 source：多数据源时各自序列不应混在一条差值曲线里。
 func publicGetMiningEarnings(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
-	const window = 7 * 24 * time.Hour
+	const (
+		window = 7 * 24 * time.Hour
+		source = "kryptex"
+	)
 
 	db := dbcore.GetDBInstance()
 	if db == nil {
@@ -34,7 +38,8 @@ func publicGetMiningEarnings(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rp
 	}
 	var rows []models.MiningEarningsSnapshot
 	if err := db.
-		Where("fetched_at >= ?", time.Now().UTC().Add(-window)).
+		Model(&models.MiningEarningsSnapshot{}).
+		Where("source = ? AND hour_utc >= ?", source, time.Now().UTC().Add(-window).Truncate(time.Hour)).
 		Order("hour_utc ASC").
 		Find(&rows).Error; err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, "failed to load earnings: "+err.Error(), nil)
@@ -44,9 +49,9 @@ func publicGetMiningEarnings(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rp
 	}
 
 	type hourlyItem struct {
-		HourUTC    string  `json:"hour_utc"`
-		EarnedBTC  float64 `json:"earned_btc"`
-		TotalBTC   float64 `json:"total_btc"`
+		HourUTC   string  `json:"hour_utc"`
+		EarnedBTC float64 `json:"earned_btc"`
+		TotalBTC  float64 `json:"total_btc"`
 	}
 	hourly := make([]hourlyItem, 0, len(rows))
 	prev := 0.0
@@ -70,11 +75,11 @@ func publicGetMiningEarnings(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rp
 	return map[string]any{
 		"enabled": true,
 		"latest": map[string]any{
-			"total_btc":     latest.TotalBTC,
-			"available_btc": latest.AvailableBTC,
-			"unpaid_btc":    latest.UnpaidBTC,
+			"total_btc":      latest.TotalBTC,
+			"available_btc":  latest.AvailableBTC,
+			"unpaid_btc":     latest.UnpaidBTC,
 			"day_earned_btc": latest.DayEarnedBTC,
-			"fetched_at":   latest.FetchedAt.Format(time.RFC3339),
+			"fetched_at":     latest.FetchedAt.Format(time.RFC3339),
 		},
 		"hourly": hourly,
 	}, nil

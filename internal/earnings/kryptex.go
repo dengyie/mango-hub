@@ -64,9 +64,9 @@ var (
 	breakdownValueAfterRe = regexp.MustCompile(
 		`</div>\s*<div class="bal-breakdown__value[^"]*"[^>]*>\s*([0-9.]+)\s*BTC`)
 	// 流水条目：meta 里是时间文本，随后 400 字符内的 bal-feed__value
-	// span 是金额；正向条目带 bal-feed__value--positive 类。
+	// span 是金额；条目可能带 +/- 前缀，减项（如 payout）不带 positive 类。
 	entryRe = regexp.MustCompile(
-		`bal-feed__meta">\s*([^<]+?)\s*</div>[\s\S]{0,400}?class="bal-feed__value([^"]*)">\s*\+?([0-9.]+)\s*</span>`)
+		`bal-feed__meta">\s*([^<]+?)\s*</div>[\s\S]{0,400}?class="bal-feed__value([^"]*)">\s*([+-]?[0-9.]+)\s*</span>`)
 	entryTimeLayout = "Jan. 2, 2006, 3:04 PM"
 )
 
@@ -91,21 +91,22 @@ func ParseBalancePage(html string, now time.Time) (*BalancePage, error) {
 		if err != nil {
 			continue
 		}
-		switch {
-		case strings.Contains(strings.ToLower(title), "total"):
+		// 精确匹配标题而非子串包含：页面还有 "Bitcoin Rate" 等同构卡，
+		// 未来新增 "Total payout" 之类的卡不应覆盖 Total。
+		if strings.EqualFold(title, "total balance") || title == "总余额" {
 			out.Total = v
 			seen["total"] = true
-		case strings.Contains(strings.ToLower(title), "rate"), strings.Contains(strings.ToLower(title), "汇率"):
-			// Bitcoin Rate 等汇率卡片：复用同一标题结构，跳过
 		}
 	}
 	for _, loc := range breakdownLabelRe.FindAllStringSubmatchIndex(html, -1) {
 		title := strings.TrimSpace(html[loc[2]:loc[3]])
-		// 从标题文本结束处（含其后的 "<"）向后找相邻的 value div，
-		// 仅在 label 之后的有限窗口内匹配，避免跨卡误配。
+		// 从标题文本结束处（含其后的 "<"）向后找相邻的 value div。
+		// Pending 的 label 里嵌着多币种明细（币种多时可达数 KB），窗口
+		// 8KB 保证明细再长也能在自己卡内命中 value，同时仍远小于跨卡
+		// 误配的距离（下一张卡之间隔着完整的 label+value 结构）。
 		tail := html[loc[1]-1:]
-		if len(tail) > 2048 {
-			tail = tail[:2048]
+		if len(tail) > 8192 {
+			tail = tail[:8192]
 		}
 		vm := breakdownValueAfterRe.FindStringSubmatch(tail)
 		if vm == nil {
@@ -140,6 +141,11 @@ func ParseBalancePage(html string, now time.Time) (*BalancePage, error) {
 			continue
 		}
 		out.Entries = append(out.Entries, BalanceEntry{Time: t, Amount: v, Positive: strings.Contains(m[2], "--positive")})
+	}
+	// Total 可解析但分项缺失（如币种明细过长把 value 挤出匹配窗口）时
+	// 明确告警，避免 unpaid/available 静默回退为 0 且无人察觉。
+	if !seen["available"] || !seen["unpaid"] {
+		logger.Warn("earnings", "Kryptex breakdown cards missing (available/unpaid not found; page layout may have changed)")
 	}
 	return out, nil
 }
