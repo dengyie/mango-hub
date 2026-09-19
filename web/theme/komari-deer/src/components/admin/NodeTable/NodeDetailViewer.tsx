@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { schema } from "@/components/admin/NodeTable/schema/node";
+import { MiningControl } from "@/components/admin/NodeTable/MiningControl";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   Drawer,
@@ -205,6 +206,7 @@ export function TableCellViewer({ item }: { item: z.infer<typeof schema> }) {
                 )}
               </span>
             </div>
+            <MiningControl uuid={item.uuid} />
             <div className="flex flex-col gap-3">
               <Label htmlFor="detail-uuid">
                 {t("admin.nodeDetail.uuid", "UUID")}

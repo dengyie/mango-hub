@@ -72,6 +72,18 @@
       "ipAddress": "IP address",
       "machineDetail": "Machine details",
       "memTotal": "Total Memory",
+      "miningControl": {
+        "dispatchFailed": "Dispatch failed (node offline or agent unsupported)",
+        "failed": "Execution failed",
+        "hint": "Requires the node agent to set AGENT_MINER_CONTROL_CMD (with an {action} placeholder)",
+        "pollTimeout": "Timed out polling the task result; check task results later",
+        "start": "Start mining",
+        "starting": "Starting...",
+        "stop": "Pause mining",
+        "stopping": "Pausing...",
+        "success": "Command executed",
+        "title": "Mining control"
+      },
       "os": "operating system",
       "updatedAt": "Update time",
       "uuid": "UUID"

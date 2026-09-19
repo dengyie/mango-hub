@@ -7,17 +7,18 @@ import (
 )
 
 const (
-	Version               = "2.0"
-	MethodAgentReport     = "agent.report"
-	MethodAgentBasicInfo  = "agent.basicInfo"
-	MethodAgentPingResult = "agent.pingResult"
-	MethodAgentTaskResult = "agent.taskResult"
-	MethodAgentExec       = "agent.exec"
-	MethodAgentPing       = "agent.ping"
-	MethodAgentMessage    = "agent.message"
-	MethodAgentEvent      = "agent.event"
-	MethodAgentTerminal   = "agent.terminal.request"
-	MethodAgentPull       = "agent.pull"
+	Version                  = "2.0"
+	MethodAgentReport        = "agent.report"
+	MethodAgentBasicInfo     = "agent.basicInfo"
+	MethodAgentPingResult    = "agent.pingResult"
+	MethodAgentTaskResult    = "agent.taskResult"
+	MethodAgentExec          = "agent.exec"
+	MethodAgentMiningControl = "agent.mining.control"
+	MethodAgentPing          = "agent.ping"
+	MethodAgentMessage       = "agent.message"
+	MethodAgentEvent         = "agent.event"
+	MethodAgentTerminal      = "agent.terminal.request"
+	MethodAgentPull          = "agent.pull"
 )
 
 type Request struct {
@@ -73,6 +74,11 @@ type PullParams struct {
 type ExecParams struct {
 	TaskID  string `json:"task_id"`
 	Command string `json:"command"`
+}
+
+type MiningControlParams struct {
+	TaskID string `json:"task_id"`
+	Action string `json:"action"` // "start" | "stop"
 }
 
 type PingParams struct {

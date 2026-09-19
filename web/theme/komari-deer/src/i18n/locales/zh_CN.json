@@ -72,6 +72,18 @@
       "ipAddress": "IP 地址",
       "machineDetail": "机器详细信息",
       "memTotal": "总内存",
+      "miningControl": {
+        "dispatchFailed": "下发失败（节点不在线或 agent 不支持）",
+        "failed": "执行失败",
+        "hint": "需要节点 agent 配置 AGENT_MINER_CONTROL_CMD 模板（含 {action} 占位符）",
+        "pollTimeout": "查询执行结果超时，请稍后在任务结果中查看",
+        "start": "启动挖矿",
+        "starting": "启动中...",
+        "stop": "暂停挖矿",
+        "stopping": "暂停中...",
+        "success": "指令已执行",
+        "title": "挖矿管控"
+      },
       "os": "操作系统",
       "updatedAt": "更新时间",
       "uuid": "UUID"
