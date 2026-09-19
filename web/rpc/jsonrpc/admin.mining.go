@@ -24,17 +24,14 @@ func init() {
 	reg("miningControl", adminMiningControl, "Start or stop mining on clients (requires agent AGENT_MINER_CONTROL_CMD)")
 }
 
-// partitionTargets 将目标节点按「v2 在线可即时下发 / 在线排队补发 / 离线 / v1 不支持」分区。
+// partitionTargets 将目标节点按「在线可即时下发 / 在线排队补发 / 离线」分区。
 // 查询以函数注入隔离 agent_runtime 全局态，表驱动测试见 admin.mining_test.go；
 // 顺序保持调用方传入顺序，便于结果呈现与排查。
-func partitionTargets(clients []string, isConnected, isOnline, isV2 func(string) bool) (online, queued, offline, unsupported []string) {
+func partitionTargets(clients []string, isConnected, isOnline func(string) bool) (online, queued, offline []string) {
 	for _, uuid := range clients {
 		switch {
-		case isConnected(uuid) && isV2(uuid):
-			online = append(online, uuid)
 		case isConnected(uuid):
-			// 在线但 v1 协议：无 mining.control 能力，不维护 legacy 双发路径，直接落失败结果
-			unsupported = append(unsupported, uuid)
+			online = append(online, uuid)
 		case isOnline(uuid):
 			queued = append(queued, uuid)
 		default:
@@ -71,21 +68,20 @@ func adminMiningControl(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc
 		return nil, rpc.MakeError(rpc.InvalidParams, "clients is required", nil)
 	}
 
-	online, queued, offline, unsupported := partitionTargets(params.Clients,
-		func(uuid string) bool { return agent_runtime.GetConnectedClients()[uuid] != nil },
+	online, queued, offline := partitionTargets(params.Clients,
+		func(uuid string) bool { return agent_runtime.GetConnectedClient(uuid) != nil },
 		agent_runtime.IsAgentOnline,
-		agent_runtime.IsV2Client,
 	)
 	if len(online) == 0 && len(queued) == 0 {
 		return nil, rpc.MakeError(rpc.InvalidParams,
-			"No connected client supports mining control (v2 protocol required; agent must set AGENT_MINER_CONTROL_CMD)", nil)
+			"No online client supports mining control (agent must be online and set AGENT_MINER_CONTROL_CMD)", nil)
 	}
 
 	taskId := utils.GenerateRandomString(16)
-	taskClients := online
+	taskClients := make([]string, 0, len(online)+len(queued)+len(offline))
+	taskClients = append(taskClients, online...)
 	taskClients = append(taskClients, queued...)
 	taskClients = append(taskClients, offline...)
-	taskClients = append(taskClients, unsupported...)
 	if err := tasks.CreateTask(taskId, taskClients, "mining "+params.Action); err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, "Failed to create task: "+err.Error(), nil)
 	}
@@ -97,7 +93,7 @@ func adminMiningControl(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc
 	})
 	now := time.Now().UTC()
 	sent, failed := dispatchToConnected(payload, online, func(uuid string) error {
-		client := agent_runtime.GetConnectedClients()[uuid]
+		client := agent_runtime.GetConnectedClient(uuid)
 		if client == nil {
 			return fmt.Errorf("connection lost")
 		}
@@ -113,22 +109,17 @@ func adminMiningControl(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc
 	for _, uuid := range offline {
 		tasks.SaveTaskResult(taskId, uuid, "Client offline!", -1, now)
 	}
-	for _, uuid := range unsupported {
-		tasks.SaveTaskResult(taskId, uuid,
-			"Agent runs legacy protocol; upgrade mango-agent to use mining control.", -1, now)
-	}
 
 	actor, ip := auditActor(ctx)
 	auditlog.Log(ip, actor, fmt.Sprintf("Mining control: %s, task id: %s", params.Action, taskId), "warn")
 
 	return map[string]any{
-		"task_id":             taskId,
-		"action":              params.Action,
-		"clients":             online,
-		"sent_clients":        sent,
-		"queued_clients":      queued,
-		"offline_clients":     offline,
-		"unsupported_clients": unsupported,
-		"failed_clients":      failed,
+		"task_id":         taskId,
+		"action":          params.Action,
+		"clients":         online,
+		"sent_clients":    sent,
+		"queued_clients":  queued,
+		"offline_clients": offline,
+		"failed_clients":  failed,
 	}, nil
 }

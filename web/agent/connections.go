@@ -35,6 +35,12 @@ func GetConnectedClients() map[string]*connection.SafeConn {
 	return clientsCopy
 }
 
+func GetConnectedClient(uuid string) *connection.SafeConn {
+	mu.RLock()
+	defer mu.RUnlock()
+	return connectedClients[uuid]
+}
+
 func SetConnectedClients(uuid string, conn *connection.SafeConn) {
 	mu.Lock()
 	defer mu.Unlock()

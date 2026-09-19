@@ -7,38 +7,28 @@ import (
 	"testing"
 )
 
-// TestPartitionMiningControlTargets 覆盖 adminMiningControl 的四态分区：
-// v2 在线 / v1 在线（不支持）/ 排队 / 离线，以及混合输入下的顺序保持。
+// TestPartitionMiningControlTargets 覆盖 adminMiningControl 的三态分区：
+// 在线可即时下发 / 在线排队补发 / 离线，以及混合输入下的顺序保持。
 func TestPartitionMiningControlTargets(t *testing.T) {
 	cases := []struct {
-		name                         string
-		clients                      []string
-		connected, online, v2        map[string]bool
-		wantOnline, wantQueued       []string
-		wantOffline, wantUnsupported []string
+		name                   string
+		clients                []string
+		connected, online      map[string]bool
+		wantOnline, wantQueued []string
+		wantOffline            []string
 	}{
 		{
-			name:       "v2 online goes to online",
+			name:       "connected goes to online",
 			clients:    []string{"a"},
 			connected:  map[string]bool{"a": true},
 			online:     map[string]bool{"a": true},
-			v2:         map[string]bool{"a": true},
 			wantOnline: []string{"a"},
-		},
-		{
-			name:            "v1 online goes to unsupported, never to dispatch",
-			clients:         []string{"a"},
-			connected:       map[string]bool{"a": true},
-			online:          map[string]bool{"a": true},
-			v2:              map[string]bool{},
-			wantUnsupported: []string{"a"},
 		},
 		{
 			name:       "online but disconnected goes to queued",
 			clients:    []string{"a"},
 			connected:  map[string]bool{},
 			online:     map[string]bool{"a": true},
-			v2:         map[string]bool{"a": true},
 			wantQueued: []string{"a"},
 		},
 		{
@@ -46,28 +36,24 @@ func TestPartitionMiningControlTargets(t *testing.T) {
 			clients:     []string{"a"},
 			connected:   map[string]bool{},
 			online:      map[string]bool{},
-			v2:          map[string]bool{"a": true},
 			wantOffline: []string{"a"},
 		},
 		{
-			name:            "mixed input keeps caller order in every partition",
-			clients:         []string{"v2a", "v1b", "q-c", "off-d", "v2e"},
-			connected:       map[string]bool{"v2a": true, "v1b": true, "v2e": true},
-			online:          map[string]bool{"v2a": true, "v1b": true, "q-c": true, "v2e": true},
-			v2:              map[string]bool{"v2a": true, "v2e": true},
-			wantOnline:      []string{"v2a", "v2e"},
-			wantQueued:      []string{"q-c"},
-			wantOffline:     []string{"off-d"},
-			wantUnsupported: []string{"v1b"},
+			name:        "mixed input keeps caller order in every partition",
+			clients:     []string{"a", "b", "q-c", "off-d", "e"},
+			connected:   map[string]bool{"a": true, "b": true, "e": true},
+			online:      map[string]bool{"a": true, "b": true, "q-c": true, "e": true},
+			wantOnline:  []string{"a", "b", "e"},
+			wantQueued:  []string{"q-c"},
+			wantOffline: []string{"off-d"},
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			online, queued, offline, unsupported := partitionTargets(tc.clients,
+			online, queued, offline := partitionTargets(tc.clients,
 				func(u string) bool { return tc.connected[u] },
 				func(u string) bool { return tc.online[u] },
-				func(u string) bool { return tc.v2[u] },
 			)
 			if !reflect.DeepEqual(online, tc.wantOnline) {
 				t.Fatalf("online = %v, want %v", online, tc.wantOnline)
@@ -78,10 +64,27 @@ func TestPartitionMiningControlTargets(t *testing.T) {
 			if !reflect.DeepEqual(offline, tc.wantOffline) {
 				t.Fatalf("offline = %v, want %v", offline, tc.wantOffline)
 			}
-			if !reflect.DeepEqual(unsupported, tc.wantUnsupported) {
-				t.Fatalf("unsupported = %v, want %v", unsupported, tc.wantUnsupported)
-			}
 		})
+	}
+}
+
+// TestSliceIsolationPreventsAliasing 校验组合切片独立分配，防止对合并切片的 append 污染原始 online 结果。
+func TestSliceIsolationPreventsAliasing(t *testing.T) {
+	online := make([]string, 1, 10)
+	online[0] = "node-1"
+	queued := []string{"node-2"}
+	offline := []string{"node-3"}
+
+	taskClients := make([]string, 0, len(online)+len(queued)+len(offline))
+	taskClients = append(taskClients, online...)
+	taskClients = append(taskClients, queued...)
+	taskClients = append(taskClients, offline...)
+
+	if len(online) != 1 || online[0] != "node-1" {
+		t.Fatalf("online slice was corrupted: %v", online)
+	}
+	if len(taskClients) != 3 {
+		t.Fatalf("taskClients length = %d, want 3", len(taskClients))
 	}
 }
 

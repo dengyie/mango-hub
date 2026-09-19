@@ -194,3 +194,31 @@ func TestMaskWalletAddr(t *testing.T) {
 		}
 	}
 }
+
+func TestSanitizeMetricTags(t *testing.T) {
+	tags := map[string]string{
+		"rig":       "krxXGNKMD4/home-win",
+		"algorithm": "heavyhash",
+		"pool":      "stratum+tcp://kryptex.com:7777",
+	}
+
+	// 访客模式 (maskWallet = true)
+	masked := sanitizeMetricTags(tags, true)
+	if masked["rig"] != "krxX***D4/home-win" {
+		t.Fatalf("sanitizeMetricTags mask=true rig = %q, want krxX***D4/home-win", masked["rig"])
+	}
+	if masked["algorithm"] != "heavyhash" || masked["pool"] != "stratum+tcp://kryptex.com:7777" {
+		t.Fatalf("other tags corrupted: %v", masked)
+	}
+
+	// 管理员模式 (maskWallet = false)
+	unmasked := sanitizeMetricTags(tags, false)
+	if unmasked["rig"] != "krxXGNKMD4/home-win" {
+		t.Fatalf("sanitizeMetricTags mask=false rig = %q, want unmasked raw wallet", unmasked["rig"])
+	}
+
+	// 空 tags 校验
+	if empty := sanitizeMetricTags(nil, true); empty != nil {
+		t.Fatalf("nil tags should return nil, got %v", empty)
+	}
+}
