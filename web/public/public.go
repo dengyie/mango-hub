@@ -15,12 +15,15 @@ import (
 	"github.com/komari-monitor/komari/internal/config"
 )
 
-//go:embed defaultTheme
+//go:embed defaultTheme/komari-theme.json
 var PublicFS embed.FS
 
 //go:embed all:deerTheme
 // all: 前缀必须——deer 是 Next.js 产物，静态资源全在 _next/ 目录（_ 开头文件默认被 embed 忽略）
 var DeerThemeFS embed.FS
+
+//go:embed defaultTheme/dist.tar.zst
+var embeddedDistArchive []byte
 
 // 常量定义
 const (
@@ -38,6 +41,12 @@ const (
 
 func init() {
 	_ = os.MkdirAll("./data/theme", 0755)
+
+	var err error
+	defaultDistFiles, err = loadEmbeddedDist()
+	if err != nil {
+		panic("load embedded default frontend: " + err.Error())
+	}
 }
 
 func normalizeHTMLLanguage(language string) string {
@@ -128,11 +137,10 @@ func StaticRestricted(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFu
 }
 
 func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), forceDefaultTheme bool) {
-	// 初始化嵌入式文件系统，指向 defaultTheme 根目录
-	// 假设 defaultTheme 内部结构也是: dist/, theme.json 等
+	// 初始化嵌入式文件系统，指向 defaultTheme 根目录。
 	defaultThemeFS, err := fs.Sub(PublicFS, "defaultTheme")
 	if err != nil {
-		panic("you may forget to put dist of frontend to web/public/defaultTheme/dist")
+		panic("embedded default theme metadata is unavailable: " + err.Error())
 	}
 
 	deerThemeFS, err := fs.Sub(DeerThemeFS, "deerTheme")
@@ -199,7 +207,11 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 			return nil, "", false
 		}
 
-		if content, err := fs.ReadFile(defaultThemeFS, embedPath); err == nil {
+		if strings.HasPrefix(embedPath, DistDir+"/") {
+			if content, ok := defaultDistFiles[strings.TrimPrefix(embedPath, DistDir+"/")]; ok {
+				return content, mime.TypeByExtension(filepath.Ext(embedPath)), true
+			}
+		} else if content, err := fs.ReadFile(defaultThemeFS, embedPath); err == nil {
 			return content, mime.TypeByExtension(filepath.Ext(embedPath)), true
 		}
 

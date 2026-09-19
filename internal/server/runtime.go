@@ -208,7 +208,6 @@ func registerScheduledWork() {
 		logger.ErrorArgs("server", "Failed to add expire notification task:", err)
 	}
 	earnings.StartPoller()
-	notifier.InitTrafficReportSchedule()
 }
 
 const taskResultRetentionDays = 30

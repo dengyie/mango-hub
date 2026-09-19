@@ -9,7 +9,7 @@ import (
 	"github.com/komari-monitor/komari/database/dbcore"
 	"github.com/komari-monitor/komari/database/models"
 	"github.com/komari-monitor/komari/pkg/rpc"
-	v1 "github.com/komari-monitor/komari/protocol/v1"
+	v2 "github.com/komari-monitor/komari/protocol/v2"
 	agent_runtime "github.com/komari-monitor/komari/web/agent"
 )
 
@@ -32,10 +32,10 @@ func TestGetNodesLatestStatusCopiesSlimMining(t *testing.T) {
 	}
 
 	const fullWallet = "krxXGNKMD4/vps01"
-	agent_runtime.RecordReport(v1.Report{
+	agent_runtime.RecordReport(v2.Report{
 		UUID:      uuid,
 		UpdatedAt: time.Now().UTC(),
-		Mining: &v1.MiningReport{
+		Mining: &v2.MiningReport{
 			Algorithm:    "xelishashv3",
 			Pool:         "xel-hk.kryptex.network:7019",
 			Wallet:       fullWallet,
@@ -113,7 +113,7 @@ func TestGetNodesLatestStatusOmitsMiningWhenAbsent(t *testing.T) {
 	if err := db.Create(&models.Client{UUID: uuid, Name: "plain", Token: "plain-token"}).Error; err != nil {
 		t.Fatalf("create client: %v", err)
 	}
-	agent_runtime.RecordReport(v1.Report{UUID: uuid, UpdatedAt: time.Now().UTC()})
+	agent_runtime.RecordReport(v2.Report{UUID: uuid, UpdatedAt: time.Now().UTC()})
 
 	guestCtx := rpc.NewContextWithMeta(context.Background(), &rpc.ContextMeta{})
 	res, jerr := getNodesLatestStatus(guestCtx, rpc.NewRequest(1, "common:getNodesLatestStatus", map[string]any{"uuid": uuid}))

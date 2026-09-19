@@ -11,8 +11,8 @@ import (
 	"github.com/komari-monitor/komari/database/models"
 	"github.com/komari-monitor/komari/internal/metricstore"
 	"github.com/komari-monitor/komari/pkg/metric"
-	v1 "github.com/komari-monitor/komari/protocol/v1"
 	"github.com/komari-monitor/komari/pkg/rpc"
+	v2 "github.com/komari-monitor/komari/protocol/v2"
 )
 
 // useMetricsTestStore 挂载一块内存 metric store 供 API 层集成测试使用。
@@ -79,17 +79,17 @@ func TestGetRecordsByUUIDAcceptsMiningAndGpuLoadTypes(t *testing.T) {
 	// 样本时间戳必须严格落在过去（API 用 End=now 查询；已过去的分钟边界不会
 	// 被 End 排除）。用当前分钟的上一分钟，且等待跨过该边界。
 	base := time.Now().UTC().Truncate(time.Minute)
-	report := v1.Report{
-		UUID:      "node-mining",
-		UpdatedAt: base.Add(-39 * time.Second),
-		CPU:       v1.CPUReport{Usage: 10},
-		Mining: &v1.MiningReport{
-			Algorithm:    "pearlhash",
-			Pool:         "prl-eu.kryptex.network:7048",
-			Wallet:       "krxXGNKMD4/test",
-			Hashrate1Min: 1e12,
-		},
-	}
+		report := v2.Report{
+			UUID:      "node-mining",
+			UpdatedAt: base.Add(-39 * time.Second),
+			CPU:       v2.CPUReport{Usage: 10},
+			Mining: &v2.MiningReport{
+				Algorithm:    "pearlhash",
+				Pool:         "prl-eu.kryptex.network:7048",
+				Wallet:       "krxXGNKMD4/test",
+				Hashrate1Min: 1e12,
+			},
+		}
 	if _, err := metricstore.WriteReport(ctx, report); err != nil {
 		t.Fatalf("write report: %v", err)
 	}
@@ -144,10 +144,10 @@ func TestGuestMiningRecordsMaskWallet(t *testing.T) {
 
 	// 样本锚在已结束的分钟且等 now 跨过该边界，避免 End=now 排除样本
 	base := time.Now().UTC().Truncate(time.Minute).Add(-39 * time.Second)
-	report := v1.Report{
+	report := v2.Report{
 		UUID:      "node-mask",
 		UpdatedAt: base,
-		Mining: &v1.MiningReport{
+		Mining: &v2.MiningReport{
 			Algorithm:    "pearlhash",
 			Pool:         "prl-eu.kryptex.network:7048",
 			Wallet:       "krxXGNKMD4/home-win",

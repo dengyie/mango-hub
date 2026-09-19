@@ -11,7 +11,7 @@ import (
 
 	"github.com/komari-monitor/komari/database/models"
 	"github.com/komari-monitor/komari/pkg/metric"
-	v1 "github.com/komari-monitor/komari/protocol/v1"
+	v2 "github.com/komari-monitor/komari/protocol/v2"
 )
 
 type reportTrafficState struct {
@@ -57,7 +57,7 @@ type reportBatchRequest struct {
 
 type reportBatchWorker struct {
 	mu        sync.Mutex
-	queue     chan v1.Report
+	queue     chan v2.Report
 	pingQueue chan models.PingRecord
 	requests  chan reportBatchRequest
 	done      chan struct{}
@@ -73,7 +73,7 @@ func StartReportBatcher() {
 		return
 	}
 	worker := &reportBatchWorker{
-		queue:     make(chan v1.Report, reportBatchQueueSize),
+		queue:     make(chan v2.Report, reportBatchQueueSize),
 		pingQueue: make(chan models.PingRecord, reportBatchQueueSize),
 		requests:  make(chan reportBatchRequest, 1),
 		done:      make(chan struct{}),
@@ -150,16 +150,16 @@ func FlushReportBatch(ctx context.Context) error {
 // WriteReport persists one agent report and adds it to in-memory minute
 // summaries using the same server receive time. Traffic deltas remain summable
 // after rollup.
-func WriteReport(ctx context.Context, report v1.Report) (v1.Report, error) {
+func WriteReport(ctx context.Context, report v2.Report) (v2.Report, error) {
 	if report.UUID == "" {
-		return v1.Report{}, fmt.Errorf("report UUID is required")
+		return v2.Report{}, fmt.Errorf("report UUID is required")
 	}
 	if report.UpdatedAt.IsZero() {
-		return v1.Report{}, fmt.Errorf("report receive time is required")
+		return v2.Report{}, fmt.Errorf("report receive time is required")
 	}
 	report.UpdatedAt = report.UpdatedAt.UTC()
 	if GetStore() == nil {
-		return v1.Report{}, fmt.Errorf("metric store not enabled")
+		return v2.Report{}, fmt.Errorf("metric store not enabled")
 	}
 
 	reportBatcherMu.Lock()
@@ -167,19 +167,19 @@ func WriteReport(ctx context.Context, report v1.Report) (v1.Report, error) {
 	reportBatcherMu.Unlock()
 	if worker != nil {
 		if err := worker.enqueue(ctx, report); err != nil {
-			return v1.Report{}, err
+			return v2.Report{}, err
 		}
 		return report, nil
 	}
 
-	saved, err := writeReportBatch(ctx, []v1.Report{report})
+	saved, err := writeReportBatch(ctx, []v2.Report{report})
 	if err != nil {
-		return v1.Report{}, err
+		return v2.Report{}, err
 	}
 	return saved[0], nil
 }
 
-func (w *reportBatchWorker) enqueue(ctx context.Context, report v1.Report) error {
+func (w *reportBatchWorker) enqueue(ctx context.Context, report v2.Report) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.stopping {
@@ -200,7 +200,7 @@ func (w *reportBatchWorker) run() {
 	ticker := time.NewTicker(reportBatchInterval)
 	defer ticker.Stop()
 
-	var pending []v1.Report
+	var pending []v2.Report
 	var pendingPings []models.PingRecord
 	for {
 		select {
@@ -250,7 +250,7 @@ func (w *reportBatchWorker) enqueuePing(ctx context.Context, record models.PingR
 	}
 }
 
-func drainReportQueue(queue <-chan v1.Report, limit int) []v1.Report {
+func drainReportQueue(queue <-chan v2.Report, limit int) []v2.Report {
 	if limit <= 0 {
 		return nil
 	}
@@ -261,7 +261,7 @@ func drainReportQueue(queue <-chan v1.Report, limit int) []v1.Report {
 	if capacity == 0 {
 		return nil
 	}
-	reports := make([]v1.Report, 0, capacity)
+	reports := make([]v2.Report, 0, capacity)
 	for len(reports) < limit {
 		select {
 		case report := <-queue:
@@ -296,7 +296,7 @@ func drainPingQueue(queue <-chan models.PingRecord, limit int) []models.PingReco
 	return records
 }
 
-func writePendingReports(ctx context.Context, pending *[]v1.Report) error {
+func writePendingReports(ctx context.Context, pending *[]v2.Report) error {
 	if len(*pending) == 0 {
 		return nil
 	}
@@ -333,7 +333,7 @@ func writePendingPingRecords(ctx context.Context, pending *[]models.PingRecord) 
 	return nil
 }
 
-func writeReportBatch(ctx context.Context, reports []v1.Report) ([]v1.Report, error) {
+func writeReportBatch(ctx context.Context, reports []v2.Report) ([]v2.Report, error) {
 	if len(reports) == 0 {
 		return nil, nil
 	}
@@ -347,7 +347,7 @@ func writeReportBatch(ctx context.Context, reports []v1.Report) ([]v1.Report, er
 		return nil, fmt.Errorf("metric store not enabled")
 	}
 
-	prepared := make([]v1.Report, len(reports))
+	prepared := make([]v2.Report, len(reports))
 	copy(prepared, reports)
 	points := make([]metric.Point, 0, len(reports)*20)
 	pendingStates := make(map[*reportTrafficState]reportTrafficValues)
@@ -362,21 +362,18 @@ func writeReportBatch(ctx context.Context, reports []v1.Report) ([]v1.Report, er
 		}
 		if !values.initialized {
 			totalUp, hasUp, err := latestReportCounter(ctx, s, MetricNetTotalUp, report.UUID, report.UpdatedAt)
-			if err == nil {
+			if err != nil {
+				logger.Errorf("metricstore", "failed to restore previous upload counter for %s: %v", report.UUID, err)
+			} else {
 				values.totalUp = totalUp
 				values.hasUp = hasUp
-			} else if ctx.Err() == nil {
-				logger.Errorf("metricstore", "failed to restore previous upload counter for %s: %v", report.UUID, err)
 			}
 			totalDown, hasDown, err := latestReportCounter(ctx, s, MetricNetTotalDown, report.UUID, report.UpdatedAt)
-			if err == nil {
+			if err != nil {
+				logger.Errorf("metricstore", "failed to restore previous download counter for %s: %v", report.UUID, err)
+			} else {
 				values.totalDown = totalDown
 				values.hasDown = hasDown
-			} else if ctx.Err() == nil {
-				logger.Errorf("metricstore", "failed to restore previous download counter for %s: %v", report.UUID, err)
-			}
-			if err := ctx.Err(); err != nil {
-				return nil, err
 			}
 			values.initialized = true
 		}
@@ -402,13 +399,17 @@ func writeReportBatch(ctx context.Context, reports []v1.Report) ([]v1.Report, er
 		prepared[i] = report
 	}
 
-	if err := s.WriteBatch(ctx, points); err != nil {
-		return nil, err
-	}
+	// Persist the restored per-report traffic state even if the write below
+	// fails, so a slow or failing database does not re-issue the previous-
+	// counter queries on every batch.
 	for state, values := range pendingStates {
 		state.mu.Lock()
 		state.reportTrafficValues = values
 		state.mu.Unlock()
+	}
+
+	if err := s.WriteBatch(ctx, points); err != nil {
+		return nil, err
 	}
 	return prepared, nil
 }

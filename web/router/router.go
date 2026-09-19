@@ -7,6 +7,7 @@ import (
 	"github.com/komari-monitor/komari/web/api/client"
 	public_api "github.com/komari-monitor/komari/web/api/public"
 	"github.com/komari-monitor/komari/web/api/terminal"
+	"github.com/komari-monitor/komari/web/filemanager"
 	"github.com/komari-monitor/komari/web/public"
 	jsonRpc "github.com/komari-monitor/komari/web/rpc/jsonrpc"
 )
@@ -38,6 +39,9 @@ func registerPublicRoutes(r *gin.Engine) {
 	r.GET("/api/oauth_callback", public_api.OAuthCallback)
 	// 插件公开页面（visibility=public 的 iframe 页面），无需鉴权。
 	r.GET("/api/plugin/:short/*filepath", public_api.ServePluginFile)
+	// 短期文件预览令牌公开下载入口，供 Office 在线预览等服务端抓取。
+	r.GET("/api/preview/client/:uuid/file/download", filemanager.PreviewDownload)
+	r.HEAD("/api/preview/client/:uuid/file/download", filemanager.PreviewDownload)
 	// /api/clients 是 WebSocket 端点（客户端发 "get"/"get <uuid>" 拉取在线列表与最新上报），
 	// 非 JSON-RPC，保留为 WS handler。
 	r.GET("/api/clients", api.GetClients)
@@ -64,18 +68,13 @@ func registerAgentRoutes(r *gin.Engine) {
 
 	tokenAuthorized := r.Group("/api/clients", api.RequireRole(api.RoleAdmin, api.RoleClient))
 	{
-		// 上报类（WS / 原始流 / 兼容协议）保留 REST handler。
-		tokenAuthorized.GET("/report", client.WebSocketReport)
-		tokenAuthorized.POST("/uploadBasicInfo", client.UploadBasicInfo)
-		tokenAuthorized.POST("/report", client.UploadReport)
+		// Agent 上报统一使用 v2 JSON-RPC。
 		tokenAuthorized.GET("/v2/rpc", client.WebSocketV2RPC)
 		tokenAuthorized.POST("/v2/rpc", client.UploadV2RPC)
+		// File data uses a short-lived, raw HTTP stream opened by a file RPC.
+		tokenAuthorized.GET("/transfer/:id", filemanager.AgentTransfer)
+		tokenAuthorized.POST("/transfer/:id", filemanager.AgentTransfer)
 		tokenAuthorized.GET("/terminal", terminal.EstablishConnection)
-
-		// JSON 接口 -> RPC2 (client: 命名空间)。
-		tokenAuthorized.POST("/task/result", jsonRpc.Bind("client:taskResult", jsonRpc.WithRaw()))
-		tokenAuthorized.GET("/ping/tasks", jsonRpc.Bind("client:getPingTasks", jsonRpc.WithRaw()))
-		tokenAuthorized.POST("/ping/result", jsonRpc.Bind("client:uploadPingResult", jsonRpc.WithRaw()))
 	}
 }
 
@@ -86,11 +85,14 @@ func registerAdminRoutes(r *gin.Engine) {
 
 	// --- 二进制/流/重定向类，保留 REST handler ---
 	g.GET("/download/backup", admin.DownloadBackup)
-	g.POST("/upload/backup", admin.UploadBackup)
-	// chunk upload 用于大备份文件分块上传，提高稳定性
-	g.POST("/upload/backup/init", admin.InitChunkUpload)
-	g.POST("/upload/backup/chunk", admin.UploadChunk)
-	g.POST("/upload/backup/merge", admin.MergeChunkUpload)
+	uploadHandler := admin.NewArchiveUploadHandler()
+	uploadGroup := g.Group("/upload")
+	{
+		uploadGroup.POST("/init", uploadHandler.Init)
+		uploadGroup.POST("/chunk", uploadHandler.Chunk)
+		uploadGroup.POST("/merge", uploadHandler.Merge)
+		uploadGroup.POST("/cancel", uploadHandler.Cancel)
+	}
 	g.GET("/test/geoip", jsonRpc.Bind("admin:testGeoip", jsonRpc.WithQuery("ip")))
 	g.POST("/test/sendMessage", jsonRpc.Bind("admin:testSendMessage"))
 	g.POST("/update/mmdb", admin.UpdateMmdbGeoIP)
@@ -98,10 +100,9 @@ func registerAdminRoutes(r *gin.Engine) {
 	g.PUT("/update/favicon", admin.UploadFavicon)
 	g.POST("/update/favicon", admin.DeleteFavicon)
 
-	// theme 含文件上传，保留 REST handler。
+	// theme 的安装流程通过统一的分片上传接口；其余主题接口保留 REST handler。
 	theme := g.Group("/theme")
 	{
-		theme.PUT("/upload", admin.UploadTheme)
 		theme.GET("/list", admin.ListThemes)
 		theme.POST("/delete", admin.DeleteTheme)
 		theme.GET("/set", admin.SetTheme)
@@ -174,7 +175,14 @@ func registerAdminRoutes(r *gin.Engine) {
 		clientGroup.POST("/:uuid/remove", jsonRpc.Bind("admin:removeClient", jsonRpc.WithPath("uuid")))
 		clientGroup.GET("/:uuid/token", jsonRpc.Bind("admin:getClientToken", jsonRpc.WithPath("uuid"), jsonRpc.WithFlat()))
 		clientGroup.POST("/order", jsonRpc.Bind("admin:orderClients"))
-		clientGroup.GET("/:uuid/terminal", api.RequireSensitive2FA(), terminal.RequestTerminal)
+		// RequestTerminal validates 2FA only when creating a new session. Reattach
+		// requests are authenticated against the existing session owner so a short
+		// network flap does not depend on the current TOTP window.
+		clientGroup.GET("/:uuid/terminal", terminal.RequestTerminal)
+		clientGroup.POST("/:uuid/file/upload", filemanager.Upload)
+		clientGroup.GET("/:uuid/file/download", filemanager.Download)
+		clientGroup.HEAD("/:uuid/file/download", filemanager.Download)
+		clientGroup.GET("/:uuid/file/preview-token", filemanager.CreatePreviewToken)
 	}
 
 	// records
@@ -205,13 +213,12 @@ func registerAdminRoutes(r *gin.Engine) {
 		clipboardGroup.POST("/:id/remove", jsonRpc.Bind("admin:deleteClipboard", jsonRpc.WithPath("id")))
 	}
 
-	// plugins: 上传走 REST（zip 二进制），启停/列表/日志走 RPC2，市场对齐主题市场。
+	// plugins: 安装流程通过统一的分片上传接口，启停/列表/日志走 RPC2，市场对齐主题市场。
 	pluginGroup := g.Group("/plugin")
 	{
 		pluginGroup.GET("/list", jsonRpc.Bind("admin:listPlugins"))
 		pluginGroup.POST("/enabled", jsonRpc.Bind("admin:setPluginEnabled"))
 		pluginGroup.GET("/logs", jsonRpc.Bind("admin:getPluginLogs", jsonRpc.WithQuery("short")))
-		pluginGroup.POST("/install", admin.UploadPlugin)
 		pluginGroup.GET("/market/sources", admin.ListPluginMarketSources)
 		pluginGroup.POST("/market/sources", admin.CreatePluginMarketSource)
 		pluginGroup.PUT("/market/sources/:id", admin.UpdatePluginMarketSource)
@@ -238,13 +245,6 @@ func registerAdminRoutes(r *gin.Engine) {
 			loadAlert.POST("/add", jsonRpc.Bind("admin:addLoadNotification"))
 			loadAlert.POST("/delete", jsonRpc.Bind("admin:deleteLoadNotification"))
 			loadAlert.POST("/edit", jsonRpc.Bind("admin:editLoadNotification"))
-		}
-		trafficReport := notificationGroup.Group("/traffic-report")
-		{
-			trafficReport.GET("/", jsonRpc.Bind("admin:listTrafficReportNotifications"))
-			trafficReport.POST("/edit", jsonRpc.Bind("admin:editTrafficReportNotifications"))
-			trafficReport.POST("/enable", jsonRpc.Bind("admin:enableTrafficReportNotifications"))
-			trafficReport.POST("/disable", jsonRpc.Bind("admin:disableTrafficReportNotifications"))
 		}
 	}
 

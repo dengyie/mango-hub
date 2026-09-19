@@ -85,7 +85,7 @@ func TestRestrictedControllersRegisterUnifiedRoutes(t *testing.T) {
 			if routes["POST "+base+"/discard"] != test.discard {
 				t.Fatalf("POST %s/discard presence = %v, want %v", base, routes["POST "+base+"/discard"], test.discard)
 			}
-			if routes["GET /api/public"] || routes["GET /api/rpc2"] || routes["POST /api/clients/report"] {
+			if routes["GET /api/public"] || routes["GET /api/rpc2"] || routes["GET /api/clients/v2/rpc"] {
 				t.Fatalf("ordinary APIs leaked into restricted routes: %#v", routes)
 			}
 
@@ -126,7 +126,13 @@ func TestUnifiedAuthIncludesMode(t *testing.T) {
 }
 
 func TestStructureProgressPercent(t *testing.T) {
-	if got := structureProgressPercent(metricstore.RestructureProgress{RowsDone: 50, RowsTotal: 100}); got != 47.5 {
-		t.Fatalf("copying percent = %v, want 47.5", got)
+	if got := structureProgressPercent(metricstore.RestructureProgress{RowsDone: 50, RowsTotal: 100}); got != 40 {
+		t.Fatalf("copying percent = %v, want 40", got)
+	}
+	if got := structureProgressPercent(metricstore.RestructureProgress{Phase: "reclaiming"}); got != 80 {
+		t.Fatalf("reclaiming percent = %v, want 80", got)
+	}
+	if got := structureProgressPercent(metricstore.RestructureProgress{RowsDone: 100, RowsTotal: 100}); got != 80 {
+		t.Fatalf("capped percent = %v, want 80", got)
 	}
 }
