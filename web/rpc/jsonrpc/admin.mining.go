@@ -96,7 +96,7 @@ func adminMiningControl(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc
 		Params:  v2.MiningControlParams{TaskID: taskId, Action: params.Action},
 	})
 	now := time.Now().UTC()
-	_, failed := dispatchToConnected(payload, online, func(uuid string) error {
+	sent, failed := dispatchToConnected(payload, online, func(uuid string) error {
 		client := agent_runtime.GetConnectedClients()[uuid]
 		if client == nil {
 			return fmt.Errorf("connection lost")
@@ -125,6 +125,7 @@ func adminMiningControl(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc
 		"task_id":             taskId,
 		"action":              params.Action,
 		"clients":             online,
+		"sent_clients":        sent,
 		"queued_clients":      queued,
 		"offline_clients":     offline,
 		"unsupported_clients": unsupported,

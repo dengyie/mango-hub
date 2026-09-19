@@ -3,6 +3,7 @@ package jsonrpc
 import (
 	"errors"
 	"reflect"
+	"sort"
 	"testing"
 )
 
@@ -103,6 +104,25 @@ func TestDispatchToConnectedContinuesOnFailure(t *testing.T) {
 	}
 	if !reflect.DeepEqual(failed, []string{"b"}) {
 		t.Fatalf("failed = %v, want [b]", failed)
+	}
+}
+
+// TestDispatchToConnectedSentPlusFailedCoversAll 成功+失败必须恰好覆盖全部入参（不重不漏）。
+func TestDispatchToConnectedSentPlusFailedCoversAll(t *testing.T) {
+	sent, failed := dispatchToConnected([]byte("{}"), []string{"a", "b", "c", "d"}, func(u string) error {
+		if u == "c" {
+			return errors.New("down")
+		}
+		return nil
+	})
+	got := append(append([]string{}, sent...), failed...)
+	sort.Strings(got)
+	want := []string{"a", "b", "c", "d"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("sent+failed = %v, want %v", got, want)
+	}
+	if !reflect.DeepEqual(failed, []string{"c"}) {
+		t.Fatalf("failed = %v, want [c]", failed)
 	}
 }
 

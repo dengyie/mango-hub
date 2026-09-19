@@ -19,7 +19,9 @@ type TaskResult = {
 };
 
 const POLL_INTERVAL_MS = 2000;
-const POLL_MAX_TIMES = 8;
+// csnet 的 start 经 supervisord startProcess(startsecs=10) + 看门狗敲门拉矿机，
+// 命令总时长可达 ~30s，轮询窗口需覆盖
+const POLL_MAX_TIMES = 15;
 
 /**
  * 节点详情抽屉里的挖矿管控（中心端 启动/暂停 子节点挖矿任务）。
