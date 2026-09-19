@@ -4,7 +4,7 @@ import type { NodeBasicInfo } from "@/contexts/NodeListContext";
  * CNB AI 反代/额度 —— 单节点归属判定。
  *
  * 背景：CNB 额度卡（/ops/quota）与「CNB-AI-反代」HTTP 可达性标签
- * 都属于「承载 CNB 反代（cnb-ai.mangoqwq.com）」的这一台主机（[香港]Azure-VPS）。
+ * 都属于「承载 CNB 反代（cnb-ai.mangoqwq.com）」的这一台主机（[香港]HK-Azure 本机）。
  * 后端把这个反代可达性任务标记为 default_on（新探针自动开启），导致新增探针
  * 也会带上「CNB-AI-反代」；同时前端 LoadChart 把 QuotaChart 无条件渲染在
  * 每个节点弹窗里（embedded 模式），导致所有 VPS 都显示「CNB AI Quota」。
@@ -14,14 +14,14 @@ import type { NodeBasicInfo } from "@/contexts/NodeListContext";
  *   - 只有该节点的 Ping Stats 显示「CNB-AI-反代」可达性标签。
  * 这样即使后端仍把该可达性任务分配给新探针，新增探针也不会再出现 CNB 相关标签。
  *
- * 识别依据优先用锚点 uuid（强识别），保留兼容性节点名含 `Azure`（当前固定宿主节点
- * 为 `[香港]Azure-VPS`，uuid `7ff47295-1d4c-4443-b72a-e6f81a56b527`）。即使宿主机将来
- * 改名（名称含 azure）只要 uuid 不变仍能识别；也不会因新增某台名字含 azure 的非宿主机而误显。
+ * 识别依据用锚点 uuid（强识别）。不再按节点名含 `azure` 兜底——2026-09-19 新增
+ * `[印度]Azure-India-ARM` 后，名字兜底会把它误判为宿主导致额度卡泄漏；当前固定宿主
+ * 节点为 `[香港]HK-Azure 本机`，uuid `cd520e0b-bb1a-456e-b58c-7814f83c78f6`。
+ * 宿主机换机/重建只需更新 `CNB_HOST_UUID`。
  */
 
-const CNB_HOST_NAME_PATTERN = /azure/i;
-/** anchor uuid —— 即使宿主机改名也按此强识别（当前承载 CNB 反代的节点）。 */
-const CNB_HOST_UUID = "7ff47295-1d4c-4443-b72a-e6f81a56b527";
+/** anchor uuid —— 承载 CNB 反代/额度数据的宿主节点，uuid 强识别。 */
+const CNB_HOST_UUID = "cd520e0b-bb1a-456e-b58c-7814f83c78f6";
 
 /** 该可达性任务是否为「CNB 反代探活」任务（仅 CNB 宿主需要展示）。 */
 function isCnbReachabilityTaskName(name: string): boolean {
@@ -34,8 +34,7 @@ export function isCnbProxyHost(
   node: Pick<NodeBasicInfo, "name" | "uuid"> | undefined | null,
 ): boolean {
   if (!node) return false;
-  if (node.uuid && node.uuid.toLowerCase() === CNB_HOST_UUID) return true;
-  return CNB_HOST_NAME_PATTERN.test(node.name ?? "");
+  return !!node.uuid && node.uuid.toLowerCase() === CNB_HOST_UUID;
 }
 
 /**

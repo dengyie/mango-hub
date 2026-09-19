@@ -8,8 +8,7 @@ import { readFileSync } from "node:fs";
 const source = readFileSync(new URL("../src/utils/cnb.ts", import.meta.url), "utf8");
 
 // —— 与 cnb.ts 实现等价的内联副本（执行级验证）——
-const CNB_HOST_NAME_PATTERN = /azure/i;
-const CNB_HOST_UUID = "7ff47295-1d4c-4443-b72a-e6f81a56b527";
+const CNB_HOST_UUID = "cd520e0b-bb1a-456e-b58c-7814f83c78f6";
 
 function isCnbReachabilityTaskName(name) {
   const n = (name ?? "").toLowerCase();
@@ -17,8 +16,7 @@ function isCnbReachabilityTaskName(name) {
 }
 function isCnbProxyHost(node) {
   if (!node) return false;
-  if (node?.uuid && String(node.uuid).toLowerCase() === CNB_HOST_UUID) return true;
-  return CNB_HOST_NAME_PATTERN.test(node?.name ?? "");
+  return !!node?.uuid && String(node.uuid).toLowerCase() === CNB_HOST_UUID;
 }
 function filterCnbReachability(items, isHost) {
   if (isHost) return items;
@@ -26,13 +24,16 @@ function filterCnbReachability(items, isHost) {
 }
 // —— 内联副本结束 ——
 
-const AZURE_UUID = "7ff47295-1d4c-4443-b72a-e6f81a56b527";
+const AZURE_UUID = "cd520e0b-bb1a-456e-b58c-7814f83c78f6";
 
-test("CNB 宿主判定：名称含 Azure 或 uuid 命中锚点都判为宿主", () => {
-  assert.equal(isCnbProxyHost({ name: "[香港]Azure-VPS", uuid: AZURE_UUID }), true); // 两者都命中
-  assert.equal(isCnbProxyHost({ name: "AzureVPS", uuid: "some-other" }), true); // 仅名称命中
+test("CNB 宿主判定：仅 anchor uuid 命中判为宿主（名称不再兜底）", () => {
+  assert.equal(isCnbProxyHost({ name: "[香港]HK-Azure 本机", uuid: AZURE_UUID }), true);
   // anchor uuid 强识别：即使名称不含 azure 仍判为宿主
   assert.equal(isCnbProxyHost({ name: "[香港]反代母机", uuid: AZURE_UUID }), true);
+  // 名字含 azure 但 uuid 不命中 → 非宿主（2026-09-19 去 azure 名字兜底，防 India 误显）
+  assert.equal(isCnbProxyHost({ name: "[印度]Azure-India-ARM", uuid: "9b3a0e72-b51e-4cea-be13-e19e57b492b6" }), false);
+  assert.equal(isCnbProxyHost({ name: "AzureVPS", uuid: "some-other" }), false);
+  assert.equal(isCnbProxyHost({ name: "AzureVPS" }), false);
   // 非宿主：名称不含 azure 且 uuid 不命中
   assert.equal(isCnbProxyHost({ name: "[美国]Google-VPS" }), false);
   assert.equal(isCnbProxyHost({ name: "[美国]Google-VPS", uuid: "abc" }), false);
@@ -65,6 +66,6 @@ test("宿主节点不过滤任何可达性标签（保留 CNB-AI-反代）", () 
 test("source 中确实以明确定义实现宿主判定与过滤闸门", () => {
   assert.ok(source.includes("function isCnbProxyHost"));
   assert.ok(source.includes("function filterCnbReachability"));
-  assert.ok(source.includes("CNB_HOST_NAME_PATTERN"));
-  assert.ok(source.includes("CNB_HOST_UUID")); // 铺点 uuid 强识别需存在
+  assert.ok(source.includes("CNB_HOST_UUID")); // anchor uuid 强识别需存在
+  assert.ok(!source.includes("CNB_HOST_NAME_PATTERN")); // 名字兜底已移除（2026-09-19）
 });
