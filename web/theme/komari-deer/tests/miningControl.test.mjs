@@ -1,87 +1,38 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import {
+  interpretMiningControlResp,
+  isFinishedMiningTaskResult,
+  isJsonRpcNotFound,
+  pollMiningTaskResult,
+  sanitizeMiningTaskMessage,
+} from "../src/utils/miningControl.ts";
 
-const source = readFileSync(
-  new URL("../src/utils/miningControl.ts", import.meta.url),
-  "utf8",
-);
 const miningPage = readFileSync(
   new URL("../src/components/admin/NodeTable/MiningControl.tsx", import.meta.url),
   "utf8",
 );
 
-const JSONRPC_NOT_FOUND = -32044;
-
-function includesClient(list, uuid) {
-  return Array.isArray(list) && list.includes(uuid);
-}
-
-function interpretMiningControlResp(resp, uuid) {
-  if (!resp?.task_id) return { kind: "failed", reason: "no_task_id" };
-  if (includesClient(resp.failed_clients, uuid) || includesClient(resp.offline_clients, uuid)) {
-    return { kind: "failed", reason: includesClient(resp.offline_clients, uuid) ? "offline" : "dispatch" };
-  }
-  if (includesClient(resp.queued_clients, uuid) && !includesClient(resp.sent_clients, uuid)) {
-    return { kind: "queued", taskId: resp.task_id };
-  }
-  return { kind: "poll", taskId: resp.task_id };
-}
-
-function isJsonRpcNotFound(error) {
-  if (!error) return false;
-  const message = error instanceof Error ? error.message : String(error);
-  return (
-    message.includes(`RPC Error ${JSONRPC_NOT_FOUND}`) ||
-    /No results found for this task/i.test(message)
-  );
-}
-
-function sanitizeMiningTaskMessage(raw) {
-  return (raw ?? "").replace(/\0/g, "").trim().slice(0, 200);
-}
-
-function isFinishedMiningTaskResult(row) {
-  if (!row) return false;
-  return row.exit_code != null || Boolean(row.finished_at);
-}
-
-async function pollMiningTaskResult(call, uuid, taskId, options = {}) {
-  const intervalMs = options.intervalMs ?? 2000;
-  const maxAttempts = options.maxAttempts ?? 15;
-  const isAlive = options.isAlive ?? (() => true);
-  const sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
-
-  for (let i = 0; i < maxAttempts; i++) {
-    if (i > 0) await sleep(intervalMs);
-    if (!isAlive()) return { kind: "timeout" };
-    try {
-      const results = await call("admin:getTaskResultsByTaskId", { task_id: taskId });
-      const mine = (results ?? []).find((r) => r?.client === uuid);
-      if (isFinishedMiningTaskResult(mine)) {
-        return {
-          kind: "result",
-          exitCode: Number(mine.exit_code ?? -1),
-          message: sanitizeMiningTaskMessage(mine.result),
-        };
-      }
-    } catch (error) {
-      if (!isJsonRpcNotFound(error)) throw error;
-    }
-  }
-  return { kind: "timeout" };
-}
-
-test("source keeps mining control contract helpers in sync", () => {
-  assert.ok(source.includes("export function interpretMiningControlResp"), "interpret helper missing");
-  assert.ok(source.includes("export async function pollMiningTaskResult"), "poll helper missing");
-  assert.ok(source.includes("export function isFinishedMiningTaskResult"), "placeholder-row helper missing");
-  assert.ok(source.includes("if (i > 0) await sleep(intervalMs)"), "first poll must not sleep");
-  assert.ok(source.includes("JSONRPC_NOT_FOUND = -32044"), "NotFound code drifted");
-  assert.ok(source.includes('replace(/\\0/g, "")'), "NUL sanitizer missing");
+test("mining drawer stays wired to the shared helper", () => {
   assert.ok(miningPage.includes('from "@/utils/miningControl"'), "drawer must import helper");
   assert.ok(miningPage.includes("onlineList.includes(uuid)"), "drawer must disable offline");
   assert.ok(!miningPage.includes("setBusy(null);\n    }"), "drawer must not clear busy in finally");
+});
+
+test("isFinishedMiningTaskResult waits for CreateTask placeholders", () => {
+  assert.equal(isFinishedMiningTaskResult(null), false);
+  assert.equal(isFinishedMiningTaskResult(undefined), false);
+  assert.equal(
+    isFinishedMiningTaskResult({ client: "a", result: "", exit_code: null, finished_at: null }),
+    false,
+  );
+  assert.equal(isFinishedMiningTaskResult({ client: "a", exit_code: 0 }), true);
+  assert.equal(isFinishedMiningTaskResult({ client: "a", exit_code: -1 }), true);
+  assert.equal(
+    isFinishedMiningTaskResult({ client: "a", finished_at: "2026-09-21T00:54:09Z" }),
+    true,
+  );
 });
 
 test("interpretMiningControlResp fails immediately for offline/failed/no task", () => {
