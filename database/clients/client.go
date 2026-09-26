@@ -13,6 +13,7 @@ import (
 	"github.com/komari-monitor/komari/utils"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 func DeleteClient(clientUuid string) error {
@@ -114,9 +115,35 @@ func SaveClientInfo(update map[string]interface{}) error {
 		return err
 	}
 
-	err := db.Model(&models.Client{}).Where("uuid = ?", clientUUID).Updates(update).Error
-	if err != nil {
-		return err
+	return applyClientInfoUpdate(db, clientUUID, update)
+}
+
+// applyClientInfoUpdate writes a basic-info payload.
+// GORM Updates(map) skips false, so the miner flags are written with an
+// explicit column list and can flip back off. A payload that omits a flag
+// leaves the stored value alone, which keeps older agents from clearing it.
+func applyClientInfoUpdate(db *gorm.DB, clientUUID string, update map[string]interface{}) error {
+	minerFlags := map[string]interface{}{}
+	minerCols := make([]string, 0, 2)
+	for _, key := range []string{"miner_configured", "miner_controllable"} {
+		value, ok := update[key]
+		if !ok {
+			continue
+		}
+		minerFlags[key] = value
+		minerCols = append(minerCols, key)
+		delete(update, key)
+	}
+
+	if len(update) > 0 {
+		if err := db.Model(&models.Client{}).Where("uuid = ?", clientUUID).Updates(update).Error; err != nil {
+			return err
+		}
+	}
+	if len(minerCols) > 0 {
+		if err := db.Model(&models.Client{}).Where("uuid = ?", clientUUID).Select(minerCols).Updates(minerFlags).Error; err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -38,10 +38,15 @@ type Client struct {
 	Group            string     `json:"group" gorm:"type:varchar(100)"`
 	Tags             string     `json:"tags" gorm:"type:text"` // split by ';'
 	Hidden           bool       `json:"hidden" gorm:"default:false"`
-	TrafficLimit     int64      `json:"traffic_limit" gorm:"type:bigint"`
-	TrafficLimitType string     `json:"traffic_limit_type" gorm:"type:varchar(10);default:'max'"` // 流量阈值类型：sum max min up down
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
+	// MinerConfigured is true when the agent was started with a miner API URL.
+	// It survives the miner being stopped; it is not a live-hashrate signal.
+	MinerConfigured bool `json:"miner_configured" gorm:"default:false"`
+	// MinerControllable is true when the agent has a start/stop template and remote exec is on.
+	MinerControllable bool      `json:"miner_controllable" gorm:"default:false"`
+	TrafficLimit      int64     `json:"traffic_limit" gorm:"type:bigint"`
+	TrafficLimitType  string    `json:"traffic_limit_type" gorm:"type:varchar(10);default:'max'"` // 流量阈值类型：sum max min up down
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 // User represents an authenticated user
