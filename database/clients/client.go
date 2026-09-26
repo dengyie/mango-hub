@@ -114,15 +114,48 @@ func SaveClientInfo(update map[string]interface{}) error {
 	if err := verify(update); err != nil {
 		return err
 	}
+	if err := normalizeMinerFlags(update); err != nil {
+		return err
+	}
 
 	return applyClientInfoUpdate(db, clientUUID, update)
+}
+
+// normalizeMinerFlags keeps only real booleans. A string or number must not
+// reach SQLite: the column is numeric, and a type error would otherwise land
+// after the rest of the basic-info row had already been committed.
+func normalizeMinerFlags(update map[string]interface{}) error {
+	for _, key := range []string{"miner_configured", "miner_controllable"} {
+		value, ok := update[key]
+		if !ok {
+			continue
+		}
+		// JSON null arrives as nil. Leaving the key in the map makes the
+		// following split treat it as present, then GORM skips it.
+		if value == nil {
+			delete(update, key)
+			continue
+		}
+		flag, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("%s must be a boolean", key)
+		}
+		update[key] = flag
+	}
+	return nil
 }
 
 // applyClientInfoUpdate writes a basic-info payload.
 // GORM Updates(map) skips false, so the miner flags are written with an
 // explicit column list and can flip back off. A payload that omits a flag
 // leaves the stored value alone, which keeps older agents from clearing it.
+// Both writes share one transaction: a failure on the flags must not leave
+// the new version and CPU fields committed beside the old capability bits.
 func applyClientInfoUpdate(db *gorm.DB, clientUUID string, update map[string]interface{}) error {
+	if err := normalizeMinerFlags(update); err != nil {
+		return err
+	}
+
 	minerFlags := map[string]interface{}{}
 	minerCols := make([]string, 0, 2)
 	for _, key := range []string{"miner_configured", "miner_controllable"} {
@@ -135,17 +168,17 @@ func applyClientInfoUpdate(db *gorm.DB, clientUUID string, update map[string]int
 		delete(update, key)
 	}
 
-	if len(update) > 0 {
-		if err := db.Model(&models.Client{}).Where("uuid = ?", clientUUID).Updates(update).Error; err != nil {
-			return err
+	return db.Transaction(func(tx *gorm.DB) error {
+		if len(update) > 0 {
+			if err := tx.Model(&models.Client{}).Where("uuid = ?", clientUUID).Updates(update).Error; err != nil {
+				return err
+			}
 		}
-	}
-	if len(minerCols) > 0 {
-		if err := db.Model(&models.Client{}).Where("uuid = ?", clientUUID).Select(minerCols).Updates(minerFlags).Error; err != nil {
-			return err
+		if len(minerCols) == 0 {
+			return nil
 		}
-	}
-	return nil
+		return tx.Model(&models.Client{}).Where("uuid = ?", clientUUID).Select(minerCols).Updates(minerFlags).Error
+	})
 }
 
 // CreateClient 创建新客户端

@@ -62,6 +62,9 @@ func publicGetNodesInformation(ctx context.Context, _ *rpc.JsonRpcRequest) (any,
 		clientList[i].Remark = ""
 		clientList[i].Version = ""
 		clientList[i].Token = ""
+		if !isLogin {
+			clearMinerCapability(&clientList[i])
+		}
 		clientList[j] = clientList[i]
 		j++
 	}

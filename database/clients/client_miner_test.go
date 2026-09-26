@@ -75,6 +75,57 @@ func TestApplyClientInfoUpdateFlipsMinerFlagsOff(t *testing.T) {
 	}
 }
 
+func TestApplyClientInfoUpdateRejectsNonBoolMinerFlags(t *testing.T) {
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	if err := db.AutoMigrate(&models.Client{}); err != nil {
+		t.Fatalf("migrate client: %v", err)
+	}
+
+	now := time.Now().UTC()
+	client := models.Client{
+		UUID:      "miner-flag-types",
+		Token:     "miner-flag-types-token",
+		Name:      "miner-flag-types",
+		CpuCores:  2,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := db.Create(&client).Error; err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	err = applyClientInfoUpdate(db, client.UUID, map[string]interface{}{
+		"updated_at":         now,
+		"cpu_cores":          8,
+		"miner_configured":   "false",
+		"miner_controllable": 0,
+	})
+	if err == nil {
+		t.Fatal("non-bool miner flags were accepted")
+	}
+	got := reloadMinerClient(t, db, client.UUID)
+	if got.CpuCores != 2 || got.MinerConfigured || got.MinerControllable {
+		t.Fatalf("rejected payload still changed the row: %+v", got)
+	}
+
+	if err := applyClientInfoUpdate(db, client.UUID, map[string]interface{}{
+		"updated_at":         now,
+		"cpu_cores":          6,
+		"miner_configured":   nil,
+		"miner_controllable": nil,
+	}); err != nil {
+		t.Fatalf("null flags: %v", err)
+	}
+	got = reloadMinerClient(t, db, client.UUID)
+	if got.CpuCores != 6 || got.MinerConfigured || got.MinerControllable {
+		t.Fatalf("null flags changed stored identity or skipped cpu: %+v", got)
+	}
+}
+
 func reloadMinerClient(t *testing.T, db *gorm.DB, uuid string) models.Client {
 	t.Helper()
 	var got models.Client
