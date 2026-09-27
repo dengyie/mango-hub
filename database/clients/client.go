@@ -156,6 +156,16 @@ func applyClientInfoUpdate(db *gorm.DB, clientUUID string, update map[string]int
 		return err
 	}
 
+	// uuid selects the row. Leaving it in the map makes GORM replace the
+	// WHERE clause with that value, so the update matches nothing and still
+	// returns success.
+	if raw, ok := update["uuid"]; ok {
+		if raw != clientUUID {
+			return fmt.Errorf("client uuid cannot be changed")
+		}
+		delete(update, "uuid")
+	}
+
 	minerFlags := map[string]interface{}{}
 	minerCols := make([]string, 0, 2)
 	for _, key := range []string{"miner_configured", "miner_controllable"} {
@@ -314,9 +324,14 @@ func SaveClient(updates map[string]interface{}) error {
 
 	updates["updated_at"] = time.Now().UTC()
 
-	err := db.Model(&models.Client{}).Where("uuid = ?", clientUUID).Updates(updates).Error
-	if err != nil {
-		return err
-	}
-	return nil
+	return saveClient(db, clientUUID, updates)
+}
+
+// saveClient is the admin edit write. clientUUID is the row being edited;
+// a different uuid inside updates is rejected instead of selecting a new row.
+// Miner flags share the basic-info path so false is stored and a later
+// failure rolls the name back with them. Every other field stays on
+// Updates(map): selecting the whole payload would zero unsent columns.
+func saveClient(db *gorm.DB, clientUUID string, updates map[string]interface{}) error {
+	return applyClientInfoUpdate(db, clientUUID, updates)
 }
