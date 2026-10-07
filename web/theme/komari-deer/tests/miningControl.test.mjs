@@ -5,6 +5,8 @@ import {
   interpretMiningControlResp,
   isFinishedMiningTaskResult,
   isJsonRpcNotFound,
+  MINING_TASK_RESULT_POLL_MAX,
+  MINING_TASK_RESULT_POLL_MS,
   pollMiningTaskResult,
   sanitizeMiningTaskMessage,
 } from "../src/utils/miningControl.ts";
@@ -18,6 +20,14 @@ test("mining drawer stays wired to the shared helper", () => {
   assert.ok(miningPage.includes('from "@/utils/miningControl"'), "drawer must import helper");
   assert.ok(miningPage.includes("onlineList.includes(uuid)"), "drawer must disable offline");
   assert.ok(!miningPage.includes("setBusy(null);\n    }"), "drawer must not clear busy in finally");
+  assert.ok(miningPage.includes("70s"), "drawer timeout copy must match the 70s poll window");
+});
+
+test("poll window covers the agent mining control timeout", () => {
+  const windowMs = (MINING_TASK_RESULT_POLL_MAX - 1) * MINING_TASK_RESULT_POLL_MS;
+  assert.equal(MINING_TASK_RESULT_POLL_MS, 2000);
+  assert.equal(MINING_TASK_RESULT_POLL_MAX, 36);
+  assert.ok(windowMs >= 70_000, `poll window ${windowMs}ms must cover 60s agent timeout + slack`);
 });
 
 test("isFinishedMiningTaskResult waits for CreateTask placeholders", () => {
@@ -44,6 +54,10 @@ test("interpretMiningControlResp fails immediately for offline/failed/no task", 
   assert.deepEqual(
     interpretMiningControlResp({ task_id: "t1", failed_clients: ["a"] }, "a"),
     { kind: "failed", reason: "dispatch" },
+  );
+  assert.deepEqual(
+    interpretMiningControlResp({ task_id: "t1", unsupported_clients: ["a"] }, "a"),
+    { kind: "failed", reason: "unsupported" },
   );
 });
 

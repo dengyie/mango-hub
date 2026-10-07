@@ -4,6 +4,7 @@ import (
 	"errors"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -139,5 +140,45 @@ func TestDispatchToConnectedAllFail(t *testing.T) {
 	}
 	if !reflect.DeepEqual(failed, []string{"a", "b"}) {
 		t.Fatalf("failed = %v, want [a b]", failed)
+	}
+}
+
+func TestSplitByCapabilityKeepsCallerOrder(t *testing.T) {
+	supported, unsupported := splitByCapability(
+		[]string{"a", "b", "c", "d"},
+		func(u string) bool { return u == "a" || u == "c" },
+	)
+	if !reflect.DeepEqual(supported, []string{"a", "c"}) {
+		t.Fatalf("supported = %v, want [a c]", supported)
+	}
+	if !reflect.DeepEqual(unsupported, []string{"b", "d"}) {
+		t.Fatalf("unsupported = %v, want [b d]", unsupported)
+	}
+}
+
+func TestMiningControlRejectReasonDistinguishesOfflineAndCapability(t *testing.T) {
+	if got := miningControlRejectReason([]string{"a"}, nil, nil, nil); got != "" {
+		t.Fatalf("online supported should dispatch, got %q", got)
+	}
+	if got := miningControlRejectReason(nil, []string{"a"}, nil, nil); got != "" {
+		t.Fatalf("queued supported should dispatch, got %q", got)
+	}
+
+	offline := miningControlRejectReason(nil, nil, nil, []string{"a"})
+	if offline != "No online clients" {
+		t.Fatalf("all-offline reason = %q", offline)
+	}
+	if strings.Contains(offline, "AGENT_MINER_CONTROL_CMD") {
+		t.Fatalf("all-offline must not mention CONTROL_CMD: %q", offline)
+	}
+
+	unsupported := miningControlRejectReason(nil, nil, []string{"a"}, nil)
+	if !strings.Contains(unsupported, "AGENT_MINER_CONTROL_CMD") {
+		t.Fatalf("all-unsupported should mention CONTROL_CMD, got %q", unsupported)
+	}
+
+	mixed := miningControlRejectReason(nil, nil, []string{"a"}, []string{"b"})
+	if mixed == "No online clients" || mixed == unsupported {
+		t.Fatalf("mixed unsupported+offline should be a distinct reason, got %q", mixed)
 	}
 }

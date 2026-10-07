@@ -8,6 +8,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/komari-monitor/komari/database/auditlog"
+	"github.com/komari-monitor/komari/database/clients"
 	"github.com/komari-monitor/komari/database/tasks"
 	"github.com/komari-monitor/komari/pkg/rpc"
 	v2 "github.com/komari-monitor/komari/protocol/v2"
@@ -41,6 +42,42 @@ func partitionTargets(clients []string, isConnected, isOnline func(string) bool)
 	return
 }
 
+// splitByCapability 把连通性分区后的节点再按 miner_controllable 切开。
+// 不可控的节点不能下发：agent 会立刻 -1 拒绝，Hub 却显示 RPC 成功。
+func splitByCapability(uuids []string, isControllable func(string) bool) (supported, unsupported []string) {
+	for _, uuid := range uuids {
+		if isControllable(uuid) {
+			supported = append(supported, uuid)
+			continue
+		}
+		unsupported = append(unsupported, uuid)
+	}
+	return
+}
+
+func clientSupportsMiningControl(uuid string) bool {
+	client, err := clients.GetClientByUUID(uuid)
+	return err == nil && client.MinerControllable
+}
+
+// miningControlRejectReason 保留原因文案分类（全员离线 ≠ 没配 CONTROL_CMD）。
+// RPC 本身不再因此返回 InvalidParams：抽屉是单 uuid，必须带回 task_id
+// 和 unsupported_clients，否则前端 catch 只能显示笼统「下发失败」。
+func miningControlRejectReason(online, queued, unsupported, offline []string) string {
+	if len(online) > 0 || len(queued) > 0 {
+		return ""
+	}
+	if len(unsupported) > 0 && len(offline) == 0 {
+		return "No online client supports mining control (agent must set AGENT_MINER_CONTROL_CMD and leave remote control enabled)"
+	}
+	if len(unsupported) == 0 {
+		return "No online clients"
+	}
+	return "No online client supports mining control (targets are offline or missing AGENT_MINER_CONTROL_CMD)"
+}
+
+const miningControlUnsupportedResult = "Client does not support mining control (agent must set AGENT_MINER_CONTROL_CMD and leave remote control enabled)"
+
 // dispatchToConnected 对在线节点逐个下发 payload；单点失败记录并继续，
 // 绝不因一个连接中断整批（否则会出现「部分节点已执行但 RPC 整体报错」的误导）。
 // 返回 (成功清单, 失败清单)，失败结果由调用方落 tasks.SaveTaskResult。
@@ -72,16 +109,18 @@ func adminMiningControl(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc
 		func(uuid string) bool { return agent_runtime.GetConnectedClient(uuid) != nil },
 		agent_runtime.IsAgentOnline,
 	)
-	if len(online) == 0 && len(queued) == 0 {
-		return nil, rpc.MakeError(rpc.InvalidParams,
-			"No online client supports mining control (agent must be online and set AGENT_MINER_CONTROL_CMD)", nil)
-	}
+	online, unsupportedOnline := splitByCapability(online, clientSupportsMiningControl)
+	queued, unsupportedQueued := splitByCapability(queued, clientSupportsMiningControl)
+	unsupported := append(append([]string{}, unsupportedOnline...), unsupportedQueued...)
+	// 即使没有可下发目标也建任务：抽屉是单 uuid，必须带回 task_id +
+	// unsupported_clients，否则前端 catch 只能显示笼统「下发失败」。
 
 	taskId := utils.GenerateRandomString(16)
-	taskClients := make([]string, 0, len(online)+len(queued)+len(offline))
+	taskClients := make([]string, 0, len(online)+len(queued)+len(offline)+len(unsupported))
 	taskClients = append(taskClients, online...)
 	taskClients = append(taskClients, queued...)
 	taskClients = append(taskClients, offline...)
+	taskClients = append(taskClients, unsupported...)
 	if err := tasks.CreateTask(taskId, taskClients, "mining "+params.Action); err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, "Failed to create task: "+err.Error(), nil)
 	}
@@ -109,17 +148,21 @@ func adminMiningControl(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc
 	for _, uuid := range offline {
 		tasks.SaveTaskResult(taskId, uuid, "Client offline!", -1, now)
 	}
+	for _, uuid := range unsupported {
+		tasks.SaveTaskResult(taskId, uuid, miningControlUnsupportedResult, -1, now)
+	}
 
 	actor, ip := auditActor(ctx)
 	auditlog.Log(ip, actor, fmt.Sprintf("Mining control: %s, task id: %s", params.Action, taskId), "warn")
 
 	return map[string]any{
-		"task_id":         taskId,
-		"action":          params.Action,
-		"clients":         online,
-		"sent_clients":    sent,
-		"queued_clients":  queued,
-		"offline_clients": offline,
-		"failed_clients":  failed,
+		"task_id":             taskId,
+		"action":              params.Action,
+		"clients":             online,
+		"sent_clients":        sent,
+		"queued_clients":      queued,
+		"offline_clients":     offline,
+		"failed_clients":      failed,
+		"unsupported_clients": unsupported,
 	}, nil
 }

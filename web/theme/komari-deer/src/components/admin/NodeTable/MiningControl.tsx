@@ -50,9 +50,14 @@ export function MiningControl({ uuid }: { uuid: string }) {
       });
       const outcome = interpretMiningControlResp(resp, uuid);
       if (outcome.kind === "failed") {
-        fail(
-          t("admin.nodeDetail.miningControl.dispatchFailed", "下发失败（节点不在线或 agent 不支持）"),
-        );
+        const failedMessage =
+          outcome.reason === "unsupported"
+            ? t(
+                "admin.nodeDetail.miningControl.unsupported",
+                "节点未配置挖矿管控（缺少 AGENT_MINER_CONTROL_CMD 或远程控制已关闭）",
+              )
+            : t("admin.nodeDetail.miningControl.dispatchFailed", "下发失败（节点不在线或 agent 不支持）");
+        fail(failedMessage);
         return;
       }
       if (outcome.kind === "queued") {
@@ -75,7 +80,7 @@ export function MiningControl({ uuid }: { uuid: string }) {
         return;
       }
       fail(
-        t("admin.nodeDetail.miningControl.pollTimeout", "节点未在 30s 内回传执行结果"),
+        t("admin.nodeDetail.miningControl.pollTimeout", "节点未在 70s 内回传执行结果"),
       );
     } catch (e) {
       // 原始错误仅入控制台（可能是 i18n 之外的内部文案），UI 统一给可排查的业务提示

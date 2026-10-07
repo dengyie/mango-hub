@@ -1,11 +1,12 @@
 /**
  * 挖矿管控 RPC 契约解释与任务结果轮询（无 React 依赖）。
- * Hub admin:miningControl 会分区返回 sent / queued / failed / offline；
+ * Hub admin:miningControl 会分区返回 sent / queued / failed / offline / unsupported；
  * 前端必须先消费这些字段，再决定是否轮询 getTaskResultsByTaskId。
  */
 
 export const MINING_TASK_RESULT_POLL_MS = 2000;
-export const MINING_TASK_RESULT_POLL_MAX = 15; // 首次立即查询 + 14 次间隔，覆盖 ~30s
+// 首次立即查询 + 35 次间隔 = 70s，盖住 agent 挖矿模板 60s 超时 + WaitDelay + 回传重试。
+export const MINING_TASK_RESULT_POLL_MAX = 36;
 export const JSONRPC_NOT_FOUND = -32044;
 
 export type MiningControlResp = {
@@ -16,6 +17,7 @@ export type MiningControlResp = {
   queued_clients?: string[];
   offline_clients?: string[];
   failed_clients?: string[];
+  unsupported_clients?: string[];
 };
 
 export type MiningTaskResult = {
@@ -28,7 +30,7 @@ export type MiningTaskResult = {
 export type MiningControlOutcome =
   | { kind: "poll"; taskId: string }
   | { kind: "queued"; taskId: string }
-  | { kind: "failed"; reason: "offline" | "dispatch" | "no_task_id" };
+  | { kind: "failed"; reason: "offline" | "dispatch" | "unsupported" | "no_task_id" };
 
 export type MiningPollOutcome =
   | { kind: "result"; exitCode: number; message: string }
@@ -48,6 +50,9 @@ export function interpretMiningControlResp(
   uuid: string,
 ): MiningControlOutcome {
   if (!resp?.task_id) return { kind: "failed", reason: "no_task_id" };
+  if (includesClient(resp.unsupported_clients, uuid)) {
+    return { kind: "failed", reason: "unsupported" };
+  }
   if (includesClient(resp.failed_clients, uuid) || includesClient(resp.offline_clients, uuid)) {
     return { kind: "failed", reason: includesClient(resp.offline_clients, uuid) ? "offline" : "dispatch" };
   }
