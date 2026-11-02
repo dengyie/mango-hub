@@ -17,6 +17,7 @@ import (
 	"github.com/dengyie/mangohub/agent/dnsresolver"
 	"github.com/dengyie/mangohub/agent/monitoring"
 	v2 "github.com/dengyie/mangohub/agent/protocol/v2"
+	"github.com/dengyie/mangohub/agent/reconnect"
 	"github.com/dengyie/mangohub/agent/sshauth"
 	"github.com/dengyie/mangohub/agent/terminal"
 	"github.com/dengyie/mangohub/agent/utils"
@@ -60,11 +61,46 @@ func EstablishWebSocketConnection() {
 	defer heartbeatTicker.Stop()
 
 	var readDone <-chan struct{}
+	var readDisconn *reconnect.Disconnect
+
+	// Exponential backoff for reconnects after abnormal disconnects. Without
+	// it, a hub that keeps killing the connection (e.g. duplicate token
+	// rejection) turns every disconnect into a reconnect storm.
+	backoff := &reconnect.State{}
+	reconnectBase := time.Duration(flags.ReconnectInterval) * time.Second
+	if reconnectBase < time.Second {
+		reconnectBase = time.Second
+	}
+	var nextConnectAt time.Time
+
+	// mergeReadDisconnect records one disconnect from the write path, but
+	// prefers the read loop's account when it already finished: the read
+	// error carries the close code (e.g. the hub's duplicate rejection 1008),
+	// while the write failure is only a symptom. Consuming the closed
+	// channel here keeps MarkDisconnected to exactly one call per death.
+	mergeReadDisconnect := func(writeErr error) reconnect.Disconnect {
+		d := reconnect.Disconnect{Detail: writeErr.Error()}
+		if readDone != nil {
+			select {
+			case <-readDone:
+				if readDisconn != nil {
+					d = *readDisconn
+				}
+				readDone = nil
+				readDisconn = nil
+			default:
+			}
+		}
+		return d
+	}
 
 	for {
 		select {
 		case <-dataTicker.C:
 			if conn == nil {
+				if time.Now().Before(nextConnectAt) {
+					continue
+				}
 				log.Println("Attempting to connect to WebSocket...")
 				retry := 0
 				for retry <= flags.MaxRetries {
@@ -77,7 +113,9 @@ func EstablishWebSocketConnection() {
 						log.Println("WebSocket connected using v2 protocol")
 						done := make(chan struct{})
 						readDone = done
-						go handleWebSocketMessages(conn, done)
+						readDisconn = &reconnect.Disconnect{}
+						backoff.MarkConnected(time.Now())
+						go handleWebSocketMessages(conn, done, readDisconn)
 						break
 					} else {
 						log.Println("Failed to connect to WebSocket:", err)
@@ -96,7 +134,9 @@ func EstablishWebSocketConnection() {
 					log.Println("WebSocket recovered from POST fallback")
 					done := make(chan struct{})
 					readDone = done
-					go handleWebSocketMessages(conn, done)
+					readDisconn = &reconnect.Disconnect{}
+					backoff.MarkConnected(time.Now())
+					go handleWebSocketMessages(conn, done, readDisconn)
 				}
 			}
 			if conn == nil || time.Now().Before(nextReportAt) {
@@ -108,9 +148,11 @@ func EstablishWebSocketConnection() {
 			err = conn.WriteMessageWithDeadline(websocket.TextMessage, data, wsWriteTimeout)
 			if err != nil {
 				log.Println("Failed to send WebSocket message:", err)
+				nextConnectAt = time.Now().Add(backoff.MarkDisconnected(time.Now(), mergeReadDisconnect(err), reconnectBase))
 				conn.Close()
 				conn = nil // Mark connection as dead
 				readDone = nil
+				readDisconn = nil
 				continue
 			}
 		case <-heartbeatTicker.C:
@@ -118,18 +160,25 @@ func EstablishWebSocketConnection() {
 				err := conn.WriteMessageWithDeadline(websocket.PingMessage, nil, wsWriteTimeout)
 				if err != nil {
 					log.Println("Failed to send heartbeat:", err)
+					nextConnectAt = time.Now().Add(backoff.MarkDisconnected(time.Now(), mergeReadDisconnect(err), reconnectBase))
 					conn.Close()
 					conn = nil // Mark connection as dead
 					readDone = nil
+					readDisconn = nil
 				}
 			}
 		case <-readDone:
-			log.Println("WebSocket disconnected")
+			disconn := reconnect.Disconnect{}
+			if readDisconn != nil {
+				disconn = *readDisconn
+			}
+			nextConnectAt = time.Now().Add(backoff.MarkDisconnected(time.Now(), disconn, reconnectBase))
 			if conn != nil {
 				conn.Close()
 				conn = nil
 			}
 			readDone = nil
+			readDisconn = nil
 		}
 	}
 }
@@ -361,11 +410,16 @@ func connectWebSocket(websocketEndpoint string) (*ws.SafeConn, error) {
 	return ws.NewSafeConn(conn), nil
 }
 
-func handleWebSocketMessages(conn *ws.SafeConn, done chan<- struct{}) {
+func handleWebSocketMessages(conn *ws.SafeConn, done chan<- struct{}, disconn *reconnect.Disconnect) {
 	defer close(done)
 	for {
 		_, message_raw, err := conn.ReadMessage()
 		if err != nil {
+			// Recorded before close(done): the main loop reads *disconn after
+			// receiving from the closed channel, which orders the access.
+			if disconn != nil {
+				*disconn = reconnect.Describe(err)
+			}
 			log.Println("WebSocket read error:", err)
 			return
 		}

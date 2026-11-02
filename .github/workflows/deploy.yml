@@ -44,6 +44,9 @@ jobs:
         run: |
           cd agent
           go test -v $(go list ./... | grep -v '/server')
+          # /server 整包在 CI 上不可跑（ICMP 原始套接字等环境依赖测试会挂），
+          # 但 WebSocket 重连接线测试只依赖本地监听，按名白名单补跑。
+          go test -v -run 'TestEstablishWebSocketConnection' ./server/
 
   hub-check:
     name: Hub Lint & Build
