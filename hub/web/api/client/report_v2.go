@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	logger "github.com/dengyie/mangohub/hub/utils/log"
 	"io"
 	"net/http"
@@ -161,8 +162,28 @@ func WebSocketV2RPC(c *gin.Context) {
 		conn.WriteJSON(v2.Error(nil, -32001, "invalid token", nil))
 		return
 	}
+	// The uuid already has an active connection, so the new one must be the
+	// duplicate (e.g. a probe reusing another node's token). Reject the new
+	// connection and keep the old one: closing the old connection makes the
+	// two agents kick each other in a reconnect storm.
 	if oldConn, exists := agent_runtime.GetConnectedClients()[uuid]; exists {
-		go oldConn.Close()
+		duplicateCloseReason := fmt.Sprintf("duplicate connection rejected: client %s already has an active connection", uuid)
+		_ = conn.GetConn().WriteControl(
+			websocket.CloseMessage,
+			websocket.FormatCloseMessage(websocket.ClosePolicyViolation, duplicateCloseReason),
+			time.Now().Add(time.Second),
+		)
+		// Give the peer a moment to complete the close handshake before the
+		// deferred conn.Close() tears the TCP connection down, so the client
+		// actually observes close code 1008 instead of a bare 1006.
+		_ = conn.SetReadDeadline(time.Now().Add(time.Second))
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				break
+			}
+		}
+		logger.Warnf("client-api", "rejected duplicate v2 connection for client %s from %s: keeping active connection %d", uuid, c.ClientIP(), oldConn.ID)
+		return
 	}
 	agent_runtime.SetConnectedClients(uuid, conn)
 	agent_runtime.MarkV2Client(uuid)
