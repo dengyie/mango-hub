@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand/v2"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -33,6 +34,13 @@ const (
 	// client token that already has an active connection
 	// (hub/web/api/client/report_v2.go, websocket.ClosePolicyViolation).
 	closeCodeDuplicateConnection = websocket.ClosePolicyViolation
+
+	// duplicateRejectionReasonPrefix is the reason the hub sends alongside
+	// that code. Matching the reason too keeps the pin specific to the
+	// duplicate-rejection contract should another policy-violation close
+	// ever appear; a reason stripped by a middlebox degrades to the normal
+	// escalation, which is safe.
+	duplicateRejectionReasonPrefix = "duplicate connection rejected"
 )
 
 // backoffRandFloat is overridable in tests.
@@ -124,7 +132,7 @@ func (s *State) MarkDisconnected(now time.Time, d Disconnect, base time.Duration
 	s.consecutiveFailures++
 
 	wait := maxBackoff
-	if d.CloseCode == closeCodeDuplicateConnection {
+	if d.CloseCode == closeCodeDuplicateConnection && strings.HasPrefix(d.CloseText, duplicateRejectionReasonPrefix) {
 		if !s.duplicateRejected {
 			log.Println("Hub rejected this connection as a duplicate (close code 1008): another connection is already using this client token. Fast reconnects cannot succeed; backing off to the maximum. If this keeps happening, check whether two nodes are misconfigured with the same token.")
 		}

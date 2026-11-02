@@ -125,6 +125,26 @@ func TestStateDuplicateRejectionPinsMax(t *testing.T) {
 	}
 }
 
+// A 1008 without the hub's duplicate-rejection reason is not the agreed
+// contract (middleboxes can strip reasons; other policy violations exist),
+// so it degrades to the normal escalation instead of pinning.
+func TestStatePolicyViolationWithoutDuplicateReasonDoesNotPin(t *testing.T) {
+	fixedJitter(t, 0.5)
+	base := 5 * time.Second
+	cases := []Disconnect{
+		{CloseCode: websocket.ClosePolicyViolation},
+		{CloseCode: websocket.ClosePolicyViolation, CloseText: "some other policy"},
+	}
+	for _, d := range cases {
+		s := &State{}
+		s.MarkConnected(time.Now())
+		now := time.Now().Add(10 * time.Second)
+		if got := s.MarkDisconnected(now, d, base); got != base {
+			t.Fatalf("1008 without duplicate reason (%q) wait = %s, want base %s", d.CloseText, got, base)
+		}
+	}
+}
+
 func TestStateSingleDisconnectAfterStable(t *testing.T) {
 	fixedJitter(t, 0.5)
 	base := 5 * time.Second

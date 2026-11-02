@@ -73,6 +73,27 @@ func EstablishWebSocketConnection() {
 	}
 	var nextConnectAt time.Time
 
+	// mergeReadDisconnect records one disconnect from the write path, but
+	// prefers the read loop's account when it already finished: the read
+	// error carries the close code (e.g. the hub's duplicate rejection 1008),
+	// while the write failure is only a symptom. Consuming the closed
+	// channel here keeps MarkDisconnected to exactly one call per death.
+	mergeReadDisconnect := func(writeErr error) reconnect.Disconnect {
+		d := reconnect.Disconnect{Detail: writeErr.Error()}
+		if readDone != nil {
+			select {
+			case <-readDone:
+				if readDisconn != nil {
+					d = *readDisconn
+				}
+				readDone = nil
+				readDisconn = nil
+			default:
+			}
+		}
+		return d
+	}
+
 	for {
 		select {
 		case <-dataTicker.C:
@@ -127,7 +148,7 @@ func EstablishWebSocketConnection() {
 			err = conn.WriteMessageWithDeadline(websocket.TextMessage, data, wsWriteTimeout)
 			if err != nil {
 				log.Println("Failed to send WebSocket message:", err)
-				nextConnectAt = time.Now().Add(backoff.MarkDisconnected(time.Now(), reconnect.Disconnect{Detail: err.Error()}, reconnectBase))
+				nextConnectAt = time.Now().Add(backoff.MarkDisconnected(time.Now(), mergeReadDisconnect(err), reconnectBase))
 				conn.Close()
 				conn = nil // Mark connection as dead
 				readDone = nil
@@ -139,7 +160,7 @@ func EstablishWebSocketConnection() {
 				err := conn.WriteMessageWithDeadline(websocket.PingMessage, nil, wsWriteTimeout)
 				if err != nil {
 					log.Println("Failed to send heartbeat:", err)
-					nextConnectAt = time.Now().Add(backoff.MarkDisconnected(time.Now(), reconnect.Disconnect{Detail: err.Error()}, reconnectBase))
+					nextConnectAt = time.Now().Add(backoff.MarkDisconnected(time.Now(), mergeReadDisconnect(err), reconnectBase))
 					conn.Close()
 					conn = nil // Mark connection as dead
 					readDone = nil
