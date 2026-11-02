@@ -162,28 +162,43 @@ func WebSocketV2RPC(c *gin.Context) {
 		conn.WriteJSON(v2.Error(nil, -32001, "invalid token", nil))
 		return
 	}
-	// The uuid already has an active connection, so the new one must be the
-	// duplicate (e.g. a probe reusing another node's token). Reject the new
-	// connection and keep the old one: closing the old connection makes the
-	// two agents kick each other in a reconnect storm.
-	if oldConn, exists := agent_runtime.GetConnectedClients()[uuid]; exists {
-		duplicateCloseReason := fmt.Sprintf("duplicate connection rejected: client %s already has an active connection", uuid)
-		_ = conn.GetConn().WriteControl(
-			websocket.CloseMessage,
-			websocket.FormatCloseMessage(websocket.ClosePolicyViolation, duplicateCloseReason),
-			time.Now().Add(time.Second),
-		)
-		// Give the peer a moment to complete the close handshake before the
-		// deferred conn.Close() tears the TCP connection down, so the client
-		// actually observes close code 1008 instead of a bare 1006.
-		_ = conn.SetReadDeadline(time.Now().Add(time.Second))
-		for {
-			if _, _, err := conn.ReadMessage(); err != nil {
-				break
+	// The uuid already has an active connection. If that connection is alive
+	// (frames seen within zombieConnThreshold — healthy agents report every
+	// few seconds), the new one is the duplicate: reject it and keep the old
+	// one, otherwise two agents sharing one token kick each other in a
+	// reconnect storm. A silent registered connection is a dead half-open
+	// socket (agent slept, NAT rebuilt): take over so the reconnecting agent
+	// is not locked out until the read deadline expires.
+	if oldConn := agent_runtime.GetConnectedClient(uuid); oldConn != nil {
+		if time.Since(oldConn.LastActive()) < zombieConnThreshold {
+			duplicateCloseReason := fmt.Sprintf("duplicate connection rejected: client %s already has an active connection", uuid)
+			if len(duplicateCloseReason) > maxCloseReasonLength {
+				// gorilla does not truncate; an oversized reason makes
+				// WriteControl reject the whole close frame.
+				duplicateCloseReason = duplicateCloseReason[:maxCloseReasonLength]
 			}
+			_ = conn.GetConn().WriteControl(
+				websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.ClosePolicyViolation, duplicateCloseReason),
+				time.Now().Add(time.Second),
+			)
+			// Give the peer a moment to complete the close handshake before
+			// the deferred conn.Close() tears the TCP connection down, so the
+			// client actually observes close code 1008 instead of a bare 1006.
+			_ = conn.SetReadDeadline(time.Now().Add(time.Second))
+			for {
+				if _, _, err := conn.ReadMessage(); err != nil {
+					break
+				}
+			}
+			logger.Warnf("client-api", "rejected duplicate v2 connection for client %s from %s: keeping active connection %d", uuid, c.ClientIP(), oldConn.ID)
+			return
 		}
-		logger.Warnf("client-api", "rejected duplicate v2 connection for client %s from %s: keeping active connection %d", uuid, c.ClientIP(), oldConn.ID)
-		return
+		logger.Warnf("client-api", "replacing stale v2 connection %d for client %s (no frames for %s): serving new connection from %s", oldConn.ID, uuid, time.Since(oldConn.LastActive()).Round(time.Second), c.ClientIP())
+		// Closing wakes the old handler, whose conditional registry cleanup
+		// only removes a connection that is still the registered one, so the
+		// registration below survives it.
+		go oldConn.Close()
 	}
 	agent_runtime.SetConnectedClients(uuid, conn)
 	agent_runtime.MarkV2Client(uuid)
