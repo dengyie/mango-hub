@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -63,16 +64,32 @@ type SafeConn struct {
 	mu   sync.Mutex
 	ID   int64
 
+	// lastActive is the unix-nano time of the last frame successfully read
+	// from this connection. Control frames that gorilla swallows (pings) are
+	// not counted. Written from the read-loop goroutine, read from any
+	// goroutine, hence atomic.
+	lastActive atomic.Int64
+
 	interceptor FrameInterceptor
 	info        *ConnInfo
 }
 
 func NewSafeConn(conn *websocket.Conn) *SafeConn {
-	return &SafeConn{
+	sc := &SafeConn{
 		conn: conn,
 		mu:   sync.Mutex{},
 		ID:   time.Now().UnixNano(),
 	}
+	sc.lastActive.Store(time.Now().UnixNano())
+	return sc
+}
+
+// LastActive returns the time of the last frame successfully read from this
+// connection. It lets callers tell a live connection (frames every few
+// seconds) from a half-open one that only stops existing once the read
+// deadline fires.
+func (sc *SafeConn) LastActive() time.Time {
+	return time.Unix(0, sc.lastActive.Load())
 }
 
 // SetInterceptor attaches the hook provider and the connection identity. It
@@ -93,6 +110,7 @@ func (sc *SafeConn) readFrame() (int, []byte, error) {
 		if err != nil {
 			return 0, nil, err
 		}
+		sc.lastActive.Store(time.Now().UnixNano())
 		sc.mu.Lock()
 		interceptor, info := sc.interceptor, sc.info
 		sc.mu.Unlock()
