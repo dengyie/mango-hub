@@ -23,9 +23,12 @@ const (
 )
 
 // zombieConnThreshold 决定重复连接到达时，已注册连接算"活着"的时限。
-// 健康 agent 每 --interval（默认 3s，常见 ≤10s）就会送来数据帧，静默超过
-// 该阈值即视为半开死连接（休眠、NAT 重建），新连接可以接管。必须小于
-// readWait——后者仍是没有挑战者时的兜底清理。仅为测试可调。
+// 健康连接有两种活跃证据，都计入 SafeConn.lastActive：数据帧（每
+// --interval，默认 3s，常见 ≤10s）与控制帧（agent 每 30s 心跳 ping，
+// hub 回 pong，ping/pong handler 各自刷新）。因此阈值必须大于心跳周期
+// （30s），否则慢上报节点（--interval 超过阈值）会被误判为半开死连接
+// （休眠、NAT 重建）而遭健康接管；同时必须小于 readWait——后者仍是
+// 没有挑战者时的兜底清理。仅为测试可调。
 var zombieConnThreshold = 40 * time.Second
 
 type postPresenceEntry struct {

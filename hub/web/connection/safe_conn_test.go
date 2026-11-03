@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -251,4 +252,96 @@ func TestSafeConnOnCloseOnce(t *testing.T) {
 	if closes != 1 {
 		t.Fatalf("OnClose fired %d times", closes)
 	}
+}
+
+// TestSafeConnLastActiveTracksControlFrames pins the liveness contract behind
+// the v2 duplicate-connection check: control frames — an inbound ping and the
+// pong to an outbound ping — must refresh LastActive just like data frames,
+// so a healthy agent whose report interval exceeds zombieConnThreshold (its
+// only traffic being 30s heartbeat pings) is never treated as a zombie.
+func TestSafeConnLastActiveTracksControlFrames(t *testing.T) {
+	serverReady := make(chan *SafeConn, 1)
+	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		sc := NewSafeConn(ws)
+		serverReady <- sc
+		// Keep reading so inbound control frames reach the handlers.
+		for {
+			if _, _, err := sc.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	dialer := &websocket.Dialer{HandshakeTimeout: 5 * time.Second}
+	client, _, err := dialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+
+	var sc *SafeConn
+	select {
+	case sc = <-serverReady:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("server never upgraded the connection")
+	}
+
+	// Phase 1: the client pings; the hub must record the frame and answer
+	// with a pong (gorilla's default reply behavior preserved).
+	bornAt := sc.LastActive()
+	pongSeen := make(chan struct{}, 1)
+	client.SetPongHandler(func(string) error {
+		select {
+		case pongSeen <- struct{}{}:
+		default:
+		}
+		return nil
+	})
+	clientReaderDone := make(chan struct{})
+	go func() {
+		defer close(clientReaderDone)
+		for {
+			if _, _, err := client.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	if err := client.WriteControl(websocket.PingMessage, []byte("hb"), time.Now().Add(time.Second)); err != nil {
+		t.Fatalf("client send ping: %v", err)
+	}
+	select {
+	case <-pongSeen:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("hub never answered the heartbeat ping")
+	}
+	if !sc.LastActive().After(bornAt.Add(30 * time.Millisecond)) {
+		t.Fatalf("inbound ping did not refresh LastActive: born=%v now=%v", bornAt, sc.LastActive())
+	}
+
+	// Phase 2: the hub pings; the client's default handler pongs back and the
+	// hub's pong handler must record it too.
+	afterPing := sc.LastActive()
+	time.Sleep(50 * time.Millisecond)
+	if err := sc.GetConn().WriteControl(websocket.PingMessage, []byte("probe"), time.Now().Add(time.Second)); err != nil {
+		t.Fatalf("server send ping: %v", err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for sc.LastActive().Before(afterPing.Add(30 * time.Millisecond)) {
+		if time.Now().After(deadline) {
+			t.Fatalf("inbound pong did not refresh LastActive: before=%v now=%v", afterPing, sc.LastActive())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	_ = sc.Close()
+	<-clientReaderDone
 }

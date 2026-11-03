@@ -193,3 +193,114 @@ func TestWebSocketV2RPCTakesOverStaleConnection(t *testing.T) {
 	}
 	_ = registered
 }
+
+// A registered connection whose only sign of life is a control frame
+// (heartbeat pings — an agent pings every 30s regardless of a long
+// --interval) must survive the duplicate check: the challenger is rejected
+// instead of the hub taking over a healthy connection.
+func TestWebSocketV2RPCRejectsDuplicateWhenOnlyHeartbeatsArrive(t *testing.T) {
+	oldThreshold := zombieConnThreshold
+	zombieConnThreshold = 1500 * time.Millisecond
+	t.Cleanup(func() { zombieConnThreshold = oldThreshold })
+
+	clientUUID := "client-v2-ws-hb"
+	token := "token-v2-ws-hb"
+	wsURL := setupV2WSTest(t, clientUUID, token)
+
+	live := dialV2WS(t, wsURL)
+	registered := waitRegisteredV2Client(t, clientUUID)
+	bornAt := registered.LastActive()
+
+	// Single reader goroutine: pong firings and pull responses are funneled
+	// through channels because gorilla allows exactly one reader per conn.
+	pongSeen := make(chan struct{}, 1)
+	live.SetPongHandler(func(string) error {
+		select {
+		case pongSeen <- struct{}{}:
+		default:
+		}
+		return nil
+	})
+	pullResp := make(chan []byte, 1)
+	go func() {
+		for {
+			_, message, err := live.ReadMessage()
+			if err != nil {
+				return
+			}
+			select {
+			case pullResp <- message:
+			default:
+			}
+		}
+	}()
+
+	// Heartbeat only — no data frames. The ping lands at t≈1s, far inside the
+	// threshold measured from the ping; the challenger arrives past the
+	// threshold measured from the upgrade. Only control-frame liveness can
+	// tell the two apart.
+	time.Sleep(1 * time.Second)
+	if err := live.WriteControl(websocket.PingMessage, []byte("hb"), time.Now().Add(time.Second)); err != nil {
+		t.Fatalf("send heartbeat ping: %v", err)
+	}
+	select {
+	case <-pongSeen:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("hub never answered the heartbeat ping")
+	}
+	if !registered.LastActive().After(bornAt.Add(500 * time.Millisecond)) {
+		t.Fatalf("hub-side LastActive was not refreshed by the heartbeat ping: born=%v now=%v", bornAt, registered.LastActive())
+	}
+
+	time.Sleep(900 * time.Millisecond) // challenger at ≈t+1.9s
+
+	challenger := dialV2WS(t, wsURL)
+	_ = challenger.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_, _, err := challenger.ReadMessage()
+	if !websocket.IsCloseError(err, websocket.ClosePolicyViolation) {
+		t.Fatalf("expected duplicate rejection 1008 against a heartbeat-alive connection, got %v", err)
+	}
+	var closeErr *websocket.CloseError
+	if !errors.As(err, &closeErr) || !strings.Contains(closeErr.Text, "duplicate connection rejected") {
+		t.Fatalf("expected duplicate rejection reason, got %v", err)
+	}
+
+	// The heartbeat connection is still the registered one and still serving.
+	if current := agent_runtime.GetConnectedClient(clientUUID); current != registered {
+		t.Fatalf("heartbeat-alive connection was replaced")
+	}
+	request := v2.Request{JSONRPC: v2.Version, ID: "pull-hb", Method: v2.MethodAgentPull, Params: map[string]interface{}{}}
+	if err := live.WriteJSON(request); err != nil {
+		t.Fatalf("write pull request: %v", err)
+	}
+	select {
+	case <-pullResp:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("heartbeat-alive connection stopped serving pull requests")
+	}
+}
+
+func TestDuplicateRejectTakeTicketThrottles(t *testing.T) {
+	oldInterval := duplicateRejectLogInterval
+	duplicateRejectLogInterval = 50 * time.Millisecond
+	t.Cleanup(func() { duplicateRejectLogInterval = oldInterval })
+
+	const uuid = "client-v2-ws-logthrottle"
+	if shouldLog, suppressed := duplicateRejectTakeTicket(uuid); !shouldLog || suppressed != 0 {
+		t.Fatalf("first attempt must log: shouldLog=%v suppressed=%d", shouldLog, suppressed)
+	}
+	if shouldLog, _ := duplicateRejectTakeTicket(uuid); shouldLog {
+		t.Fatalf("second attempt within the interval must be suppressed")
+	}
+	if shouldLog, _ := duplicateRejectTakeTicket(uuid); shouldLog {
+		t.Fatalf("third attempt within the interval must be suppressed")
+	}
+	time.Sleep(60 * time.Millisecond)
+	shouldLog, suppressed := duplicateRejectTakeTicket(uuid)
+	if !shouldLog {
+		t.Fatalf("attempt after the interval must log again")
+	}
+	if suppressed != 2 {
+		t.Fatalf("suppressed count = %d, want 2", suppressed)
+	}
+}

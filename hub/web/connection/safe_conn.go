@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"net"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -65,14 +66,19 @@ type SafeConn struct {
 	ID   int64
 
 	// lastActive is the unix-nano time of the last frame successfully read
-	// from this connection. Control frames that gorilla swallows (pings) are
-	// not counted. Written from the read-loop goroutine, read from any
+	// from this connection: data frames in readFrame, plus control frames
+	// (heartbeat pings and their pongs) via the handlers installed in
+	// NewSafeConn. Written from the read-loop goroutine, read from any
 	// goroutine, hence atomic.
 	lastActive atomic.Int64
 
 	interceptor FrameInterceptor
 	info        *ConnInfo
 }
+
+// controlWriteWait mirrors gorilla's internal writeWait for the pong reply:
+// a heartbeat pong must never block the read loop for long.
+const controlWriteWait = time.Second
 
 func NewSafeConn(conn *websocket.Conn) *SafeConn {
 	sc := &SafeConn{
@@ -81,13 +87,39 @@ func NewSafeConn(conn *websocket.Conn) *SafeConn {
 		ID:   time.Now().UnixNano(),
 	}
 	sc.lastActive.Store(time.Now().UnixNano())
+	// Control frames are signs of life too: an agent pings every 30s even when
+	// its report interval exceeds zombieConnThreshold, so the duplicate check
+	// must not depend on data frames alone. Replicate gorilla's default ping
+	// handler — pong under a bounded deadline, swallowing a close already sent
+	// or a timed-out write — and record the frame first. WriteControl may run
+	// concurrently with any other writer, so calling it from the read loop
+	// without the SafeConn mutex is safe. Transient non-timeout write errors
+	// surface to the read loop, which tears the connection down and triggers a
+	// reconnect: safe degradation, identical to the default handler's fate for
+	// a dead connection.
+	conn.SetPingHandler(func(appData string) error {
+		sc.lastActive.Store(time.Now().UnixNano())
+		err := conn.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(controlWriteWait))
+		if err == websocket.ErrCloseSent {
+			return nil
+		}
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			return nil
+		}
+		return err
+	})
+	conn.SetPongHandler(func(string) error {
+		sc.lastActive.Store(time.Now().UnixNano())
+		return nil
+	})
 	return sc
 }
 
-// LastActive returns the time of the last frame successfully read from this
-// connection. It lets callers tell a live connection (frames every few
-// seconds) from a half-open one that only stops existing once the read
-// deadline fires.
+// LastActive returns the time of the last frame — data or control — read
+// from this connection. It lets callers tell a live connection (reports
+// every --interval seconds, heartbeat pings every 30s) from a half-open one
+// that only stops existing once the read deadline fires.
 func (sc *SafeConn) LastActive() time.Time {
 	return time.Unix(0, sc.lastActive.Load())
 }
