@@ -21,10 +21,12 @@ const (
 	// connect/disconnect storm.
 	stableConnectionDuration = 60 * time.Second
 
-	// Upper bound for the exponential reconnect backoff. Fast retries cannot
-	// fix a hub that is refusing us, and they turn a hub-side rejection storm
-	// into a full outage (see the 2026-11-02 duplicate-token incident).
-	maxBackoff = 5 * time.Minute
+	// MaxBackoff is the upper bound for the exponential reconnect backoff.
+	// Fast retries cannot fix a hub that is refusing us, and they turn a
+	// hub-side rejection storm into a full outage (see the 2026-11-02
+	// duplicate-token incident). Exported so the connection manager can warn
+	// at startup when a configured base interval exceeds the cap.
+	MaxBackoff = 5 * time.Minute
 
 	// Uniform jitter fraction applied to every computed backoff so a fleet of
 	// agents that lose the hub at the same moment does not reconnect in lockstep.
@@ -81,17 +83,17 @@ func Describe(err error) Disconnect {
 
 // backoff returns the wait before the next reconnect attempt after the given
 // number of consecutive abnormal disconnects: base, 2*base, 4*base, ...
-// capped at maxBackoff. The first failure waits one base interval.
+// capped at MaxBackoff. The first failure waits one base interval.
 func backoff(failures int, base time.Duration) time.Duration {
 	if base <= 0 {
 		base = time.Second
 	}
 	wait := base
-	for i := 1; i < failures && wait < maxBackoff; i++ {
+	for i := 1; i < failures && wait < MaxBackoff; i++ {
 		wait *= 2
 	}
-	if wait > maxBackoff {
-		wait = maxBackoff
+	if wait > MaxBackoff {
+		wait = MaxBackoff
 	}
 	return wait
 }
@@ -131,7 +133,7 @@ func (s *State) MarkDisconnected(now time.Time, d Disconnect, base time.Duration
 	}
 	s.consecutiveFailures++
 
-	wait := maxBackoff
+	wait := MaxBackoff
 	if d.CloseCode == closeCodeDuplicateConnection && strings.HasPrefix(d.CloseText, duplicateRejectionReasonPrefix) {
 		if !s.duplicateRejected {
 			log.Println("Hub rejected this connection as a duplicate (close code 1008): another connection is already using this client token. Fast reconnects cannot succeed; backing off to the maximum. If this keeps happening, check whether two nodes are misconfigured with the same token.")

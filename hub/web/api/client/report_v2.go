@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dengyie/mangohub/hub/database/clients"
@@ -191,7 +192,7 @@ func WebSocketV2RPC(c *gin.Context) {
 					break
 				}
 			}
-			logger.Warnf("client-api", "rejected duplicate v2 connection for client %s from %s: keeping active connection %d", uuid, c.ClientIP(), oldConn.ID)
+			logDuplicateReject(uuid, c.ClientIP(), oldConn.ID)
 			return
 		}
 		logger.Warnf("client-api", "replacing stale v2 connection %d for client %s (no frames for %s): serving new connection from %s", oldConn.ID, uuid, time.Since(oldConn.LastActive()).Round(time.Second), c.ClientIP())
@@ -267,6 +268,53 @@ func clientUUIDFromContext(c *gin.Context) (string, bool) {
 	}
 	uuid, err := clients.GetClientUUIDByToken(token)
 	return uuid, err == nil && uuid != ""
+}
+
+// duplicateRejectLogInterval throttles the duplicate-rejection warning per
+// client: agent binaries without reconnect backoff (pre-2026-11-03
+// snapshots) retry every couple of seconds and would otherwise flood the log
+// for as long as a token misconfiguration persists.
+var duplicateRejectLogInterval = time.Minute
+
+type duplicateRejectLogState struct {
+	mu         sync.Mutex
+	lastWarn   time.Time
+	suppressed int
+}
+
+var duplicateRejectLogs sync.Map // uuid -> *duplicateRejectLogState
+
+// duplicateRejectTakeTicket decides whether one duplicate-rejection attempt
+// emits the warning line: at most one per interval per client, with the
+// suppressed attempts folded into the next line as a "+N" suffix.
+func duplicateRejectTakeTicket(uuid string) (shouldLog bool, suppressed int) {
+	v, _ := duplicateRejectLogs.LoadOrStore(uuid, &duplicateRejectLogState{})
+	st := v.(*duplicateRejectLogState)
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	now := time.Now()
+	if st.lastWarn.IsZero() || now.Sub(st.lastWarn) >= duplicateRejectLogInterval {
+		suppressed = st.suppressed
+		st.lastWarn = now
+		st.suppressed = 0
+		return true, suppressed
+	}
+	st.suppressed++
+	return false, 0
+}
+
+// logDuplicateReject emits the duplicate-rejection warning through the
+// interval throttle in duplicateRejectTakeTicket.
+func logDuplicateReject(uuid, ip string, oldConnID int64) {
+	shouldLog, suppressed := duplicateRejectTakeTicket(uuid)
+	if !shouldLog {
+		return
+	}
+	if suppressed > 0 {
+		logger.Warnf("client-api", "rejected duplicate v2 connection for client %s from %s: keeping active connection %d (+%d more attempts suppressed within %s)", uuid, ip, oldConnID, suppressed, duplicateRejectLogInterval)
+		return
+	}
+	logger.Warnf("client-api", "rejected duplicate v2 connection for client %s from %s: keeping active connection %d", uuid, ip, oldConnID)
 }
 
 func notifierOnline(uuid string, connID int64) {

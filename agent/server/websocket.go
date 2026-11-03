@@ -40,6 +40,15 @@ const (
 	wsWriteTimeout = 10 * time.Second
 )
 
+// readDrainGrace bounds how long the write-failure path waits for the read
+// loop to finish recording the disconnect. A close frame already in flight
+// (e.g. the hub's duplicate rejection 1008) lands within one RTT; this grace
+// lets mergeReadDisconnect report the real close code instead of the write
+// symptom, so the duplicate-rejection pin still engages when the failure is
+// observed from the write side first. Bounded so a blackholed read — which
+// only unblocks once conn.Close() runs — cannot stall the reconnect path.
+var readDrainGrace = 500 * time.Millisecond
+
 func EstablishWebSocketConnection() {
 	var conn *ws.SafeConn
 	defer func() {
@@ -71,6 +80,9 @@ func EstablishWebSocketConnection() {
 	if reconnectBase < time.Second {
 		reconnectBase = time.Second
 	}
+	if reconnectBase > reconnect.MaxBackoff {
+		log.Printf("reconnect-interval %ds exceeds the %s reconnect backoff cap; reconnect delays are capped at %s", flags.ReconnectInterval, reconnect.MaxBackoff, reconnect.MaxBackoff)
+	}
 	var nextConnectAt time.Time
 
 	// mergeReadDisconnect records one disconnect from the write path, but
@@ -88,7 +100,8 @@ func EstablishWebSocketConnection() {
 				}
 				readDone = nil
 				readDisconn = nil
-			default:
+			case <-time.After(readDrainGrace):
+				// The read loop is still unwinding; conn.Close() below ends it.
 			}
 		}
 		return d

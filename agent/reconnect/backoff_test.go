@@ -2,6 +2,9 @@ package reconnect
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -106,15 +109,15 @@ func TestStateDuplicateRejectionPinsMax(t *testing.T) {
 
 	duplicate := Disconnect{CloseCode: websocket.ClosePolicyViolation, CloseText: "duplicate connection rejected: client x"}
 	now := time.Now().Add(10 * time.Second)
-	if got := s.MarkDisconnected(now, duplicate, base); got != maxBackoff {
-		t.Fatalf("duplicate rejection wait = %s, want %s", got, maxBackoff)
+	if got := s.MarkDisconnected(now, duplicate, base); got != MaxBackoff {
+		t.Fatalf("duplicate rejection wait = %s, want %s", got, MaxBackoff)
 	}
 
 	// Subsequent non-duplicate failures stay pinned at the maximum.
 	other := Disconnect{Detail: "read: connection reset by peer"}
 	now = now.Add(10 * time.Second)
-	if got := s.MarkDisconnected(now, other, base); got != maxBackoff {
-		t.Fatalf("wait after pinned duplicate state = %s, want %s", got, maxBackoff)
+	if got := s.MarkDisconnected(now, other, base); got != MaxBackoff {
+		t.Fatalf("wait after pinned duplicate state = %s, want %s", got, MaxBackoff)
 	}
 
 	// Once a connection is stable again, the pin lifts.
@@ -157,5 +160,33 @@ func TestStateSingleDisconnectAfterStable(t *testing.T) {
 	d := Disconnect{CloseCode: websocket.CloseGoingAway}
 	if got := s.MarkDisconnected(connectedAt.Add(time.Minute), d, base); got != base {
 		t.Fatalf("single disconnect after stable connection wait = %s, want %s", got, base)
+	}
+}
+
+// TestHubDuplicateReasonContract guards the cross-binary duplicate-rejection
+// contract: the agent pins the backoff on close code 1008 plus the hub's
+// "duplicate connection rejected" reason prefix. Both halves ship in separate
+// binaries but live in the same repository, so if the hub wording changes,
+// this test fails here instead of the pin silently degrading to plain
+// escalation. The hub-side half of the guard is
+// TestWebSocketV2RPCRejectsDuplicateKeepsOldConnection in
+// hub/web/api/client/report_v2_test.go, which asserts the same prefix on a
+// real close frame. Skipped when the agent module is consumed outside the
+// monorepo checkout.
+func TestHubDuplicateReasonContract(t *testing.T) {
+	hubDir := filepath.Join("..", "..", "hub")
+	if fi, err := os.Stat(hubDir); err != nil || !fi.IsDir() {
+		t.Skipf("hub source tree not found next to the agent module (%s); skipping contract guard", hubDir)
+	}
+	reportV2, err := os.ReadFile(filepath.Join(hubDir, "web", "api", "client", "report_v2.go"))
+	if err != nil {
+		t.Fatalf("hub source layout changed; move this contract guard with it: %v", err)
+	}
+	src := string(reportV2)
+	if !strings.Contains(src, duplicateRejectionReasonPrefix) {
+		t.Fatalf("hub report_v2.go no longer contains the reason prefix %q the agent pins on; update duplicateRejectionReasonPrefix and the hub reason together", duplicateRejectionReasonPrefix)
+	}
+	if !strings.Contains(src, "ClosePolicyViolation") {
+		t.Fatalf("hub report_v2.go no longer sends close code ClosePolicyViolation (1008) for duplicate rejections; update closeCodeDuplicateConnection and the hub together")
 	}
 }
