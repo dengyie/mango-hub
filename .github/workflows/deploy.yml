@@ -127,6 +127,8 @@ jobs:
               --name komari \
               --restart unless-stopped \
               --memory 400m --memory-swap 400m \
+              --log-opt max-size=10m \
+              --log-opt max-file=5 \
               -p 127.0.0.1:25774:25774 \
               -v /home/mango/komari/data:/app/data \
               --env-file /home/mango/komari/vault.env \

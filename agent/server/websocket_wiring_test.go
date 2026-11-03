@@ -18,8 +18,9 @@ import (
 // duplicate-rejection close (1008 + reason) pins the backoff at the maximum.
 //
 // The loop has no shutdown hook, so the goroutine leaks past the test on
-// purpose: after the third accept it is parked in the 5-minute duplicate pin,
-// and the server is deliberately left listening so it stays quiet.
+// purpose: after the third accept it is parked in the ~1-minute duplicate
+// retry cadence, and the server is deliberately left listening so it stays
+// quiet.
 func TestEstablishWebSocketConnectionReconnectWiring(t *testing.T) {
 	var (
 		mu         sync.Mutex
@@ -91,7 +92,8 @@ func TestEstablishWebSocketConnectionReconnectWiring(t *testing.T) {
 	}
 
 	// The third connection was closed with the duplicate-rejection frame:
-	// the backoff must be pinned at the maximum, so nothing reconnects.
+	// the loop must stay on the ~1-minute duplicate retry cadence, so nothing
+	// reconnects within this window.
 	time.Sleep(6 * time.Second)
 	if n := acceptCount(); n != 3 {
 		t.Fatalf("got %d accepts after the duplicate rejection, want exactly 3 (backoff not pinned)", n)

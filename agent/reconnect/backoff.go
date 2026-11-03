@@ -32,6 +32,21 @@ const (
 	// agents that lose the hub at the same moment does not reconnect in lockstep.
 	jitterFraction = 0.2
 
+	// duplicateRetryWait replaces the former "pin at MaxBackoff" behavior. A
+	// duplicate rejection has two causes with very different recovery times:
+	// (a) the hub still holds a half-open zombie connection — its takeover
+	// path clears the registration once that connection has been silent for
+	// zombieConnThreshold (40s), so a retry at 60s±20% jitter (48–72s) always
+	// lands past the threshold and succeeds on the first retry; (b) a
+	// genuinely duplicated token — retrying cannot succeed, but a cheap
+	// rejection about once a minute is harmless (the hub throttles its
+	// rejection log to one line per minute). Waiting the full 5 minutes would
+	// turn every zombie recovery into a ~5-minute outage, which production
+	// logs showed is the common case: the takeover path fired within minutes
+	// of the 2026-11-04 deploy. This revises the original "duplicate → pin at
+	// max" criterion, which predates the hub-side zombie takeover.
+	duplicateRetryWait = 60 * time.Second
+
 	// Close code the hub sends when it rejects a second connection carrying a
 	// client token that already has an active connection
 	// (hub/web/api/client/report_v2.go, websocket.ClosePolicyViolation).
@@ -123,9 +138,9 @@ func (s *State) MarkConnected(at time.Time) {
 
 // MarkDisconnected records one abnormal disconnect and returns how long to
 // wait before the next reconnect attempt. A connection that was stable long
-// enough resets the escalation; a duplicate-connection rejection pins the
-// backoff at the maximum because retrying cannot succeed until whoever else
-// is using the token gives up.
+// enough resets the escalation; a duplicate-connection rejection switches to
+// the fixed duplicateRetryWait cadence (see its doc: zombie recovery lands on
+// the first retry, a truly duplicated token just gets cheap rejections).
 func (s *State) MarkDisconnected(now time.Time, d Disconnect, base time.Duration) time.Duration {
 	if !s.lastConnectedAt.IsZero() && now.Sub(s.lastConnectedAt) >= stableConnectionDuration {
 		s.consecutiveFailures = 0
@@ -133,14 +148,13 @@ func (s *State) MarkDisconnected(now time.Time, d Disconnect, base time.Duration
 	}
 	s.consecutiveFailures++
 
-	wait := MaxBackoff
+	wait := backoff(s.consecutiveFailures, base)
 	if d.CloseCode == closeCodeDuplicateConnection && strings.HasPrefix(d.CloseText, duplicateRejectionReasonPrefix) {
 		if !s.duplicateRejected {
-			log.Println("Hub rejected this connection as a duplicate (close code 1008): another connection is already using this client token. Fast reconnects cannot succeed; backing off to the maximum. If this keeps happening, check whether two nodes are misconfigured with the same token.")
+			log.Println("Hub rejected this connection as a duplicate (close code 1008): another connection is using this client token, or the hub is still holding a half-open connection that its zombie takeover (40s) will clear. Retrying about once a minute. If this keeps happening, check whether two nodes are misconfigured with the same token.")
 		}
 		s.duplicateRejected = true
-	} else if !s.duplicateRejected {
-		wait = backoff(s.consecutiveFailures, base)
+		wait = duplicateRetryWait
 	}
 
 	delay := applyJitter(wait)

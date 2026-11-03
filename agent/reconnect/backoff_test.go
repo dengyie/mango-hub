@@ -101,7 +101,7 @@ func TestStateEscalatesAndResets(t *testing.T) {
 	}
 }
 
-func TestStateDuplicateRejectionPinsMax(t *testing.T) {
+func TestStateDuplicateRejectionUsesFixedRetryWait(t *testing.T) {
 	fixedJitter(t, 0.5)
 	base := 5 * time.Second
 	s := &State{}
@@ -109,22 +109,31 @@ func TestStateDuplicateRejectionPinsMax(t *testing.T) {
 
 	duplicate := Disconnect{CloseCode: websocket.ClosePolicyViolation, CloseText: "duplicate connection rejected: client x"}
 	now := time.Now().Add(10 * time.Second)
-	if got := s.MarkDisconnected(now, duplicate, base); got != MaxBackoff {
-		t.Fatalf("duplicate rejection wait = %s, want %s", got, MaxBackoff)
+	if got := s.MarkDisconnected(now, duplicate, base); got != duplicateRetryWait {
+		t.Fatalf("duplicate rejection wait = %s, want %s", got, duplicateRetryWait)
 	}
 
-	// Subsequent non-duplicate failures stay pinned at the maximum.
+	// Repeated duplicate rejections keep the fixed retry cadence.
+	now = now.Add(10 * time.Second)
+	if got := s.MarkDisconnected(now, duplicate, base); got != duplicateRetryWait {
+		t.Fatalf("repeated duplicate rejection wait = %s, want %s", got, duplicateRetryWait)
+	}
+
+	// A non-duplicate death during the episode escalates normally instead of
+	// inheriting a max wait: after a zombie takeover the fresh connection can
+	// die abnormally within the stability window, and that is a normal death
+	// (failures=3 here → 4×base).
 	other := Disconnect{Detail: "read: connection reset by peer"}
 	now = now.Add(10 * time.Second)
-	if got := s.MarkDisconnected(now, other, base); got != MaxBackoff {
-		t.Fatalf("wait after pinned duplicate state = %s, want %s", got, MaxBackoff)
+	if got := s.MarkDisconnected(now, other, base); got != 20*time.Second {
+		t.Fatalf("non-duplicate death during duplicate episode wait = %s, want 20s (normal escalation)", got)
 	}
 
-	// Once a connection is stable again, the pin lifts.
+	// Once a connection is stable again, the episode clears.
 	s.MarkConnected(now)
 	now = now.Add(stableConnectionDuration + time.Second)
-	if got := s.MarkDisconnected(now, other, base); got != base {
-		t.Fatalf("wait after recovery = %s, want %s", got, base)
+	if got := s.MarkDisconnected(now, duplicate, base); got != duplicateRetryWait {
+		t.Fatalf("duplicate rejection after recovery wait = %s, want %s", got, duplicateRetryWait)
 	}
 }
 
