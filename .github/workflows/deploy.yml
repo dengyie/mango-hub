@@ -132,6 +132,12 @@ jobs:
               -p 127.0.0.1:25774:25774 \
               -v /home/mango/komari/data:/app/data \
               --env-file /home/mango/komari/vault.env \
+              # Trust exactly the docker gateway so the auth-fail limiter keys
+              # buckets on the real client IP (CF-Connecting-IP / X-Real-IP from
+              # nginx). Without this every external request collapses into one
+              # 172.17.0.1 bucket and a single 401 burst 429s the whole fleet
+              # plus the admin API for 15 minutes. Keep in sync with vault.env.
+              -e MANGOHUB_TRUSTED_PROXIES=172.17.0.1/32 \
               mangohub:latest
 
             echo "=== [5/6] Self-health check ==="
