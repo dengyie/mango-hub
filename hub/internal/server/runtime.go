@@ -90,6 +90,9 @@ func (a *App) BuildRouter() error {
 	r := gin.New()
 	r.Use(logger.GinLogger(), logger.GinRecovery(), CompressionMiddleware())
 	cors := security.NewCorsController(a.settings.CorsOriginCheckEnabled, a.settings.CorsAllowedOrigins)
+	// A missing trusted-proxy config silently turns the auth-failure limiter
+	// into a fleet-wide kill switch behind nginx/docker; say so at startup.
+	security.WarnIfNoTrustedProxies()
 	r.Use(cors.Middleware(), security.AuthFailLimiter(), api.IdentityMiddleware(), api.PrivateSiteMiddleware(), noStoreAPIResponses())
 
 	// The recovery UI belongs only to its temporary restricted listener.

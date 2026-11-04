@@ -23,13 +23,23 @@ func newAuthFailTestRouter(st *authFailState) *gin.Engine {
 }
 
 // serve sends a request with explicit socket address and optional
-// CF-Connecting-IP, as the middleware sees them.
+// CF-Connecting-IP, as the middleware sees them. It always presents a client
+// token: the limiter only counts credential-carrying requests.
 func serve(r *gin.Engine, remoteAddr, cfIP string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest("GET", "/rpc", nil)
+	req := httptest.NewRequest("GET", "/rpc?token=test-token", nil)
 	req.RemoteAddr = remoteAddr
 	if cfIP != "" {
 		req.Header.Set("CF-Connecting-IP", cfIP)
 	}
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	return w
+}
+
+// serveAnon sends a request with no credential at all.
+func serveAnon(r *gin.Engine, remoteAddr string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest("GET", "/rpc", nil)
+	req.RemoteAddr = remoteAddr
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	return w
@@ -212,6 +222,73 @@ func TestAuthFailClientIPInvalidHeaderIgnored(t *testing.T) {
 	if _, ok := st.hits["127.0.0.1"]; !ok {
 		t.Fatalf("expected loopback socket IP to be tracked, hits=%v", st.hits)
 	}
+}
+
+func TestAuthFailLimiterAnonymousNeverCounted(t *testing.T) {
+	// Health probes and anonymous callers must not be able to trip the limiter.
+	st := newAuthFailStateForTest()
+	r := newAuthFailTestRouter(st)
+	for i := 0; i < authFailLimit*5; i++ {
+		if w := serveAnon(r, "203.0.113.7:5555"); w.Code != http.StatusUnauthorized {
+			t.Fatalf("anon req %d: want 401, got %d", i, w.Code)
+		}
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if len(st.hits) != 0 {
+		t.Fatalf("anonymous 401s must not be counted, hits=%v", st.hits)
+	}
+}
+
+func TestAuthFailLimiterBlockedIPStillServesAnonymous(t *testing.T) {
+	// Once an address is blocked for bad credentials, unauthenticated reads
+	// (public pages, /api/version, health) must keep working.
+	st := newAuthFailStateForTest()
+	r := newAuthFailTestRouter(st)
+	for i := 0; i < authFailLimit+1; i++ {
+		serve(r, "203.0.113.7:5555", "")
+	}
+	if w := serve(r, "203.0.113.7:5555", ""); w.Code != http.StatusTooManyRequests {
+		t.Fatalf("setup: want 429 for credentialed request, got %d", w.Code)
+	}
+	if w := serveAnon(r, "203.0.113.7:5555"); w.Code == http.StatusTooManyRequests {
+		t.Fatal("anonymous request must not inherit another client's cooldown")
+	}
+}
+
+func TestRequestCarriesCredentials(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cases := []struct {
+		name string
+		set  func(*http.Request)
+		want bool
+	}{
+		{"none", func(*http.Request) {}, false},
+		{"bearer", func(r *http.Request) { r.Header.Set("Authorization", "Bearer x") }, true},
+		{"query token", func(r *http.Request) { r.URL.RawQuery = "token=x" }, true},
+		{"query authorization", func(r *http.Request) { r.URL.RawQuery = "Authorization=x" }, true},
+		{"session cookie", func(r *http.Request) { r.Header.Set("Cookie", "session_token=x") }, true},
+		{"blank authorization", func(r *http.Request) { r.Header.Set("Authorization", "   ") }, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			req := httptest.NewRequest("GET", "/rpc", nil)
+			tc.set(req)
+			c.Request = req
+			if got := requestCarriesCredentials(c); got != tc.want {
+				t.Fatalf("requestCarriesCredentials=%v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestWarnIfNoTrustedProxiesDoesNotPanic(t *testing.T) {
+	defer SetTrustedProxies(nil, false)
+	SetTrustedProxies(nil, false)
+	WarnIfNoTrustedProxies()
+	SetTrustedProxies([]string{"172.17.0.1/32"}, false)
+	WarnIfNoTrustedProxies()
 }
 
 func newAuthFailStateForTest() *authFailState {

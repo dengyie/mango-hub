@@ -45,6 +45,14 @@ func AuthFailLimiter() gin.HandlerFunc {
 
 func (st *authFailState) middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Anonymous requests cannot brute-force a credential, so they neither
+		// count nor get blocked. That keeps public pages and health probes
+		// reachable even while an address is in cooldown.
+		if !requestCarriesCredentials(c) {
+			c.Next()
+			return
+		}
+
 		ip := authFailClientIP(c)
 		now := time.Now()
 
@@ -86,6 +94,13 @@ func (st *authFailState) middleware() gin.HandlerFunc {
 			st.mu.Unlock()
 			logger.Warnf("server", "[security] auth-fail rate limit engaged for %s: >%d 401s in %s, blocking for %s",
 				ip, authFailLimit, authFailWindow, authFailBlockFor)
+			// A private/loopback key means the bucket is a reverse-proxy hop
+			// rather than a client: every client behind that hop shares it.
+			if isPrivateOrLoopback(ip) {
+				logger.Warnf("server", "[security] %s looks like a proxy hop instead of a client: "+
+					"set MANGOHUB_TRUSTED_PROXIES (or MANGOHUB_TRUST_PRIVATE_PROXIES=1) "+
+					"so buckets key on the real client address", ip)
+			}
 			return
 		}
 		st.hits[ip] = arr
@@ -93,6 +108,44 @@ func (st *authFailState) middleware() gin.HandlerFunc {
 			st.pruneLocked(now)
 		}
 		st.mu.Unlock()
+	}
+}
+
+// requestCarriesCredentials reports whether the request presents any credential
+// the limiter could protect. Anonymous traffic is exempt from both counting and
+// blocking: it cannot brute-force a secret, and health/monitoring probes must
+// keep working during someone else's cooldown.
+func requestCarriesCredentials(c *gin.Context) bool {
+	if strings.TrimSpace(c.GetHeader("Authorization")) != "" {
+		return true
+	}
+	if v, err := c.Cookie("session_token"); err == nil && v != "" {
+		return true
+	}
+	// rpc2 agents authenticate via ?token= or ?Authorization=.
+	return c.Query("token") != "" || c.Query("Authorization") != ""
+}
+
+func isPrivateOrLoopback(ipStr string) bool {
+	parsed := net.ParseIP(ipStr)
+	if parsed == nil {
+		return false
+	}
+	return parsed.IsLoopback() || parsed.IsPrivate() || parsed.IsLinkLocalUnicast()
+}
+
+// WarnIfNoTrustedProxies surfaces the deployment mistake that makes the limiter
+// dangerous: behind a reverse proxy with no trusted hop configured, every
+// request is bucketed under the socket peer (nginx loopback or the docker
+// gateway), so one client's 401 burst blocks every other client.
+func WarnIfNoTrustedProxies() {
+	trustedCIDRsMu.RLock()
+	configured, private := len(trustedCIDRs), trustPrivate
+	trustedCIDRsMu.RUnlock()
+	if configured == 0 && !private {
+		logger.Warnf("server", "[security] no trusted proxies configured (MANGOHUB_TRUSTED_PROXIES / MANGOHUB_TRUST_PRIVATE_PROXIES unset): "+
+			"auth-fail buckets fall back to the socket peer. Behind nginx or docker this collapses all clients into one bucket, "+
+			"so a single 401 burst blocks the whole fleet and the admin API for %s.", authFailBlockFor)
 	}
 }
 
