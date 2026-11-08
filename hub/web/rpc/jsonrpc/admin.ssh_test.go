@@ -216,12 +216,48 @@ func TestResolveTargetUser(t *testing.T) {
 			explicitUser: "",
 			expected:     "admin",
 		},
-		{
-			name:         "Windows OS returns empty user for agent default handling",
-			client:       &models.Client{Name: "win-server", OS: "Windows Server 2022"},
-			explicitUser: "",
-			expected:     "",
-		},
+			{
+				name:         "Windows OS returns Administrator",
+				client:       &models.Client{Name: "win-server", OS: "Windows Server 2022"},
+				explicitUser: "",
+				expected:     "Administrator",
+			},
+			{
+				name:         "macOS standard returns admin",
+				client:       &models.Client{Name: "mac-mini", OS: "Darwin 23.4.0 (macOS Sonoma)"},
+				explicitUser: "",
+				expected:     "admin",
+			},
+			{
+				name:         "macOS on AWS returns ec2-user",
+				client:       &models.Client{Name: "aws-mac-metal", OS: "macOS Ventura 13.5", Tags: "cloud:aws"},
+				explicitUser: "",
+				expected:     "ec2-user",
+			},
+			{
+				name:         "FreeBSD standard returns freebsd",
+				client:       &models.Client{Name: "bsd-box", OS: "FreeBSD 14.0-RELEASE"},
+				explicitUser: "",
+				expected:     "freebsd",
+			},
+			{
+				name:         "FreeBSD on AWS returns ec2-user",
+				client:       &models.Client{Name: "aws-bsd", OS: "FreeBSD 13.2-RELEASE", Tags: "cloud:aws"},
+				explicitUser: "",
+				expected:     "ec2-user",
+			},
+			{
+				name:         "Azure VM returns azureuser",
+				client:       &models.Client{Name: "azure-vm-hk", OS: "Ubuntu 22.04 LTS", Tags: "cloud:azure"},
+				explicitUser: "",
+				expected:     "azureuser",
+			},
+			{
+				name:         "Oracle Cloud VM returns opc",
+				client:       &models.Client{Name: "oci-tokyo-arm", OS: "Oracle Linux Server 9.2", Tags: "cloud:oracle"},
+				explicitUser: "",
+				expected:     "opc",
+			},
 		{
 			name:         "Ubuntu OS returns ubuntu",
 			client:       &models.Client{Name: "tokyo-ubuntu", OS: "Ubuntu 24.04 LTS"},
@@ -334,9 +370,196 @@ func TestRequestSSHTicketTargetUserInference(t *testing.T) {
 	if targetInfo["user"] != "admin" {
 		t.Errorf("expected target_info.user to be 'admin', got %q", targetInfo["user"])
 	}
-	expectedCmd := "ssh -p 22 admin@52.192.36.79"
-	if sshCmd != expectedCmd {
-		t.Errorf("expected ssh_command %q, got %q", expectedCmd, sshCmd)
+		expectedCmd := "ssh -p 22 admin@52.192.36.79"
+		if sshCmd != expectedCmd {
+			t.Errorf("expected ssh_command %q, got %q", expectedCmd, sshCmd)
+		}
 	}
-}
+
+	func TestRequestSSHTicketAliasesAndOverrides(t *testing.T) {
+		flags.DatabaseType = flags.DatabaseTypeSQLite
+		flags.DatabaseFile = "file:ssh_alias_test?mode=memory&cache=shared"
+		db := dbcore.GetDBInstance()
+
+		targetClient := models.Client{
+			UUID:      "target-alias-uuid",
+			Token:     "target-token",
+			Name:      "target-node",
+			OS:        "Ubuntu 22.04 LTS",
+			IPv4:      "192.168.1.100",
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		}
+		_ = db.Create(&targetClient)
+
+		sourceClient := models.Client{
+			UUID:      "source-alias-uuid",
+			Token:     "source-token",
+			Name:      "source-node",
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		}
+		_ = db.Create(&sourceClient)
+
+		adminCtx := rpc.NewContextWithMeta(context.Background(), &rpc.ContextMeta{
+			Permission: rpc.RoleAdmin,
+			User:       &models.User{Username: "admin"},
+		})
+
+		// 测试入参别名 target_client / source_client 以及显式 target_host / target_port 覆盖
+		req := &rpc.JsonRpcRequest{
+			Params: map[string]any{
+				"target_client":    "target-alias-uuid",
+				"source_client":    "source-alias-uuid",
+				"target_host":      "10.144.144.99",
+				"target_port":      2222,
+				"duration_seconds": 3600,
+			},
+		}
+		res, rpcErr := clientRequestSSHTicket(adminCtx, req)
+		if rpcErr != nil {
+			t.Fatalf("clientRequestSSHTicket with aliases failed: %v", rpcErr)
+		}
+		resMap := res.(map[string]any)
+		ticket := resMap["ticket"].(*models.SSHTicket)
+		targetInfo := resMap["target_info"].(map[string]any)
+		sshCmd := resMap["ssh_command"].(string)
+
+		if ticket.TargetClient != "target-alias-uuid" {
+			t.Errorf("expected ticket.TargetClient to be 'target-alias-uuid', got %q", ticket.TargetClient)
+		}
+		if ticket.SourceClient != "source-alias-uuid" {
+			t.Errorf("expected ticket.SourceClient to be 'source-alias-uuid', got %q", ticket.SourceClient)
+		}
+		if ticket.TargetHost != "10.144.144.99" {
+			t.Errorf("expected ticket.TargetHost override to be '10.144.144.99', got %q", ticket.TargetHost)
+		}
+		if ticket.TargetPort != 2222 {
+			t.Errorf("expected ticket.TargetPort override to be 2222, got %d", ticket.TargetPort)
+		}
+		if targetInfo["host"] != "10.144.144.99" || targetInfo["port"] != 2222 {
+			t.Errorf("expected target_info host/port override, got %+v", targetInfo)
+		}
+		expectedCmd := "ssh -p 2222 ubuntu@10.144.144.99"
+		if sshCmd != expectedCmd {
+			t.Errorf("expected ssh_command %q, got %q", expectedCmd, sshCmd)
+		}
+	}
+
+	func TestRequestSSHTicketTagParsingAndIPv6(t *testing.T) {
+		flags.DatabaseType = flags.DatabaseTypeSQLite
+		flags.DatabaseFile = "file:ssh_tag_ipv6_test?mode=memory&cache=shared"
+		db := dbcore.GetDBInstance()
+
+		// 模拟仅有 IPv6 且 tags 带有空格与混合大小写的节点
+		ipv6Client := models.Client{
+			UUID:      "ipv6-node-uuid",
+			Token:     "ipv6-token",
+			Name:      "ipv6-node",
+			OS:        "Debian GNU/Linux 12",
+			Tags:      "  ssh_user :  operator ;  SSH_PORT:  22022  ",
+			IPv4:      "",
+			IPv6:      "2001:db8::1",
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		}
+		_ = db.Create(&ipv6Client)
+
+		adminCtx := rpc.NewContextWithMeta(context.Background(), &rpc.ContextMeta{
+			Permission: rpc.RoleAdmin,
+			User:       &models.User{Username: "admin"},
+		})
+
+		req := &rpc.JsonRpcRequest{
+			Params: map[string]any{
+				"target_uuid": "ipv6-node-uuid",
+			},
+		}
+		res, rpcErr := clientRequestSSHTicket(adminCtx, req)
+		if rpcErr != nil {
+			t.Fatalf("clientRequestSSHTicket failed: %v", rpcErr)
+		}
+		resMap := res.(map[string]any)
+		ticket := resMap["ticket"].(*models.SSHTicket)
+		sshCmd := resMap["ssh_command"].(string)
+
+		if ticket.TargetUser != "operator" {
+			t.Errorf("expected user 'operator', got %q", ticket.TargetUser)
+		}
+		if ticket.TargetPort != 22022 {
+			t.Errorf("expected port 22022, got %d", ticket.TargetPort)
+		}
+		if ticket.TargetHost != "2001:db8::1" {
+			t.Errorf("expected host '2001:db8::1', got %q", ticket.TargetHost)
+		}
+		expectedCmd := "ssh -p 22022 operator@[2001:db8::1]"
+		if sshCmd != expectedCmd {
+			t.Errorf("expected ssh_command %q, got %q", expectedCmd, sshCmd)
+		}
+	}
+
+	func TestAdminListAndGetSSHTickets(t *testing.T) {
+		flags.DatabaseType = flags.DatabaseTypeSQLite
+		flags.DatabaseFile = "file:ssh_admin_list_get_test?mode=memory&cache=shared"
+		db := dbcore.GetDBInstance()
+
+		testTicket := models.SSHTicket{
+			TicketID:     "ticket-admin-query-1",
+			SourceClient: "source-node",
+			TargetClient: "target-node",
+			PublicKey:    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI mock",
+			Status:       "active",
+			TargetUser:   "admin",
+			TargetHost:   "10.0.0.1",
+			TargetPort:   22,
+			ExpiresAt:    time.Now().UTC().Add(time.Hour),
+			CreatedAt:    time.Now().UTC(),
+		}
+		if err := db.Create(&testTicket).Error; err != nil {
+			t.Fatalf("create test ticket failed: %v", err)
+		}
+
+		adminCtx := rpc.NewContextWithMeta(context.Background(), &rpc.ContextMeta{
+			Permission: rpc.RoleAdmin,
+			User:       &models.User{Username: "admin"},
+		})
+
+		// 1. 调用 admin:listSSHTickets 应成功返回工单列表
+		res, rpcErr := adminListSSHTickets(adminCtx, &rpc.JsonRpcRequest{
+			Params: map[string]any{
+				"status": "active",
+				"limit":  10,
+			},
+		})
+		if rpcErr != nil {
+			t.Fatalf("adminListSSHTickets failed: %v", rpcErr)
+		}
+		listMap := res.(map[string]any)
+		tickets := listMap["tickets"].([]models.SSHTicket)
+		total := listMap["total"].(int64)
+		if total < 1 || len(tickets) < 1 {
+			t.Fatalf("expected at least 1 ticket, got total=%d, count=%d", total, len(tickets))
+		}
+
+		// 2. 调用 admin:getSSHTicket 获取单个工单详情
+		getRes, rpcErr := adminGetSSHTicket(adminCtx, &rpc.JsonRpcRequest{
+			Params: map[string]any{"ticket_id": testTicket.TicketID},
+		})
+		if rpcErr != nil {
+			t.Fatalf("adminGetSSHTicket failed: %v", rpcErr)
+		}
+		gotTicket := getRes.(map[string]any)["ticket"].(*models.SSHTicket)
+		if gotTicket.TicketID != testTicket.TicketID || gotTicket.TargetUser != "admin" {
+			t.Fatalf("adminGetSSHTicket mismatch: got %+v", gotTicket)
+		}
+
+		// 3. 查询不存在的工单应返回错误
+		_, rpcErr = adminGetSSHTicket(adminCtx, &rpc.JsonRpcRequest{
+			Params: map[string]any{"ticket_id": "non-existent-ticket-id"},
+		})
+		if rpcErr == nil {
+			t.Fatalf("expected error for non-existent ticket, got nil")
+		}
+	}
+
 

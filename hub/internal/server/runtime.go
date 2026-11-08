@@ -14,6 +14,7 @@ import (
 	"github.com/dengyie/mangohub/hub/database/accounts"
 	"github.com/dengyie/mangohub/hub/database/auditlog"
 	d_notification "github.com/dengyie/mangohub/hub/database/notification"
+	"github.com/dengyie/mangohub/hub/database/ssh"
 	"github.com/dengyie/mangohub/hub/database/tasks"
 	"github.com/dengyie/mangohub/hub/internal/config"
 	"github.com/dengyie/mangohub/hub/internal/earnings"
@@ -209,6 +210,13 @@ func registerScheduledWork() {
 	}
 	if err := scheduler.AddFunc("notifier:expire", "0 0 9 * * *", notifier.CheckExpireScheduledWork); err != nil {
 		logger.ErrorArgs("server", "Failed to add expire notification task:", err)
+	}
+	if err := scheduler.AddFunc("ssh:tickets:expire", "@every 1m", func() {
+		if err := ssh.ExpireStaleTickets(); err != nil {
+			logger.Errorf("server", "Failed to expire stale SSH tickets: %v", err)
+		}
+	}); err != nil {
+		logger.ErrorArgs("server", "Failed to add SSH ticket expire task:", err)
 	}
 	earnings.StartPoller()
 }

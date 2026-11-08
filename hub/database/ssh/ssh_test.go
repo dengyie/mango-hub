@@ -97,6 +97,54 @@ func TestSSHKeyAndTicketCRUD(t *testing.T) {
 			t.Fatalf("Ticket status should be active with empty error, got: %+v", okRecord)
 		}
 
+		// 测试终态保护：当工单已被 revoked 时，迟到的失败 ACK 不允许覆盖为 failed
+		raceTicket, _, err := CreateSSHTicket("client-a", "client-b", key.ID, "admin", "10.144.144.82", 22, "127.0.0.1", time.Hour)
+		if err != nil {
+			t.Fatalf("CreateSSHTicket failed: %v", err)
+		}
+		if err := RevokeSSHTicket(raceTicket.TicketID); err != nil {
+			t.Fatalf("RevokeSSHTicket failed: %v", err)
+		}
+		// 模拟迟到的失败上报
+		if err := UpdateSSHTicketResult(raceTicket.TicketID, false, "late failure report"); err != nil {
+			t.Fatalf("UpdateSSHTicketResult returned error: %v", err)
+		}
+		raceRecord, err := GetSSHTicketByID(raceTicket.TicketID)
+		if err != nil || raceRecord.Status != "revoked" {
+			t.Fatalf("Expected revoked status to be preserved, got status: %s", raceRecord.Status)
+		}
+
+		// 测试非 active 状态（如 failed）的工单也可以被吊销
+		if err := RevokeSSHTicket(failTicket.TicketID); err != nil {
+			t.Fatalf("RevokeSSHTicket on failed ticket failed: %v", err)
+		}
+		revokedFailed, err := GetSSHTicketByID(failTicket.TicketID)
+		if err != nil || revokedFailed.Status != "revoked" {
+			t.Fatalf("Expected failed ticket to be revoked, got: %+v", revokedFailed)
+		}
+
+		// 测试已吊销工单再次吊销（幂等成功）
+		if err := RevokeSSHTicket(failTicket.TicketID); err != nil {
+			t.Fatalf("Repeated RevokeSSHTicket should succeed idempotently, got: %v", err)
+		}
+
+		// 测试不存在工单吊销（返回错误）
+		if err := RevokeSSHTicket("non-existent-ticket-uuid"); err == nil {
+			t.Fatalf("Expected error when revoking non-existent ticket, got nil")
+		}
+
+		// 测试 ListSSHTickets 分页与过滤
+		tickets, total, err := ListSSHTickets(TicketFilter{
+			Status: "revoked",
+			Limit:  10,
+		})
+		if err != nil {
+			t.Fatalf("ListSSHTickets failed: %v", err)
+		}
+		if total < 3 || len(tickets) == 0 {
+			t.Fatalf("Expected at least 3 revoked tickets, got total=%d, len=%d", total, len(tickets))
+		}
+
 		// 清理该测试创建的 key，避免污染后续测试
 		_ = DeleteSSHKey(key.ID)
 }

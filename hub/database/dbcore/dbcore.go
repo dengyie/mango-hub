@@ -403,6 +403,10 @@ func Close() error {
 	if instance == nil {
 		return nil
 	}
+	if flags.DatabaseType == flags.DatabaseTypeSQLite {
+		// 优雅退出时对 SQLite 主库执行 TRUNCATE checkpoint，将 WAL 数据刷回主库并截断 WAL，避免外部文件句柄悬挂或残留未合并事务
+		_ = instance.Exec("PRAGMA wal_checkpoint(TRUNCATE)").Error
+	}
 	sqlDB, err := instance.DB()
 	if err != nil {
 		return err

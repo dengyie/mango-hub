@@ -147,8 +147,23 @@ func TestV2SSHTicketResultHandling(t *testing.T) {
 	if err := db.First(&updatedTicket, "ticket_id = ?", ticketID).Error; err != nil {
 		t.Fatalf("load ticket: %v", err)
 	}
-	if updatedTicket.ErrorMessage != "" {
-		t.Fatalf("expected empty error_message on success, got %q", updatedTicket.ErrorMessage)
+		if updatedTicket.ErrorMessage != "" {
+			t.Fatalf("expected empty error_message on success, got %q", updatedTicket.ErrorMessage)
+		}
+
+		// 模拟非目标节点伪造上报结果（鉴权拦截）
+		respSpoof := handleV2RPC("rogue-client-2", v2.Request{
+			JSONRPC: v2.Version,
+			Method:  v2.MethodAgentSSHTicketResult,
+			Params: v2.SSHTicketResultParams{
+				TicketID: ticketID,
+				Success:  false,
+				Error:    "spoofed report",
+			},
+			ID: "ticket-ack-spoof",
+		}, false)
+		if respSpoof.Error == nil || respSpoof.Error.Code != -32003 {
+			t.Fatalf("expected error code -32003 for mismatched target client, got: %+v", respSpoof.Error)
+		}
 	}
-}
 

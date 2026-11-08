@@ -94,25 +94,51 @@ func init() {
 		Returns: "{ ticket: SSHTicket, private_key: string, target_info: object }",
 	})
 
-	// 吊销互访 Ticket
-	RegisterWithGroupAndMeta("revokeSSHTicket", rpc.RoleClient, clientRevokeSSHTicket, &rpc.MethodMeta{
-		Name:        "client:revokeSSHTicket",
-		Summary:     "Revoke an active SSH access ticket",
-		Description: "Revoke ticket and remove public key on target client immediately",
-		Params: []rpc.ParamMeta{
-			{Name: "ticket_id", Type: "string", Description: "Ticket ID to revoke"},
-		},
-		Returns: "{ success: boolean }",
-	})
-	RegisterWithGroupAndMeta("revokeSSHTicket", rpc.RoleAdmin, clientRevokeSSHTicket, &rpc.MethodMeta{
-		Name:        "admin:revokeSSHTicket",
-		Summary:     "Revoke an active SSH access ticket by Admin",
-		Description: "Admin revoke ticket and remove public key on target client immediately",
-		Params: []rpc.ParamMeta{
-			{Name: "ticket_id", Type: "string", Description: "Ticket ID to revoke"},
-		},
-		Returns: "{ success: boolean }",
-	})
+		// 吊销互访 Ticket
+		RegisterWithGroupAndMeta("revokeSSHTicket", rpc.RoleClient, clientRevokeSSHTicket, &rpc.MethodMeta{
+			Name:        "client:revokeSSHTicket",
+			Summary:     "Revoke an active SSH access ticket",
+			Description: "Revoke ticket and remove public key on target client immediately",
+			Params: []rpc.ParamMeta{
+				{Name: "ticket_id", Type: "string", Description: "Ticket ID to revoke"},
+			},
+			Returns: "{ success: boolean }",
+		})
+		RegisterWithGroupAndMeta("revokeSSHTicket", rpc.RoleAdmin, clientRevokeSSHTicket, &rpc.MethodMeta{
+			Name:        "admin:revokeSSHTicket",
+			Summary:     "Revoke an active SSH access ticket by Admin",
+			Description: "Admin revoke ticket and remove public key on target client immediately",
+			Params: []rpc.ParamMeta{
+				{Name: "ticket_id", Type: "string", Description: "Ticket ID to revoke"},
+			},
+			Returns: "{ success: boolean }",
+		})
+
+		// 管理员查询与审计 SSH 工单列表
+		RegisterWithGroupAndMeta("listSSHTickets", rpc.RoleAdmin, adminListSSHTickets, &rpc.MethodMeta{
+			Name:        "admin:listSSHTickets",
+			Summary:     "List SSH access tickets with filter and pagination",
+			Description: "Admin query and audit all issued SSH access tickets",
+			Params: []rpc.ParamMeta{
+				{Name: "status", Type: "string", Description: "Filter by status: active, revoked, expired, failed"},
+				{Name: "target_client", Type: "string", Description: "Filter by target client UUID"},
+				{Name: "source_client", Type: "string", Description: "Filter by source client UUID"},
+				{Name: "limit", Type: "number", Description: "Page size (default 50, max 200)"},
+				{Name: "offset", Type: "number", Description: "Offset (default 0)"},
+			},
+			Returns: "{ tickets: SSHTicket[], total: number }",
+		})
+
+		// 管理员查询单个 SSH 工单详情
+		RegisterWithGroupAndMeta("getSSHTicket", rpc.RoleAdmin, adminGetSSHTicket, &rpc.MethodMeta{
+			Name:        "admin:getSSHTicket",
+			Summary:     "Get detailed info of a specific SSH access ticket",
+			Description: "Admin get details and execution error message for a ticket",
+			Params: []rpc.ParamMeta{
+				{Name: "ticket_id", Type: "string", Description: "Ticket ID to query"},
+			},
+			Returns: "{ ticket: SSHTicket }",
+		})
 }
 
 func adminListSSHKeys(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
@@ -190,15 +216,82 @@ func adminDeleteSSHKey(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.Js
 	return map[string]any{"success": true}, nil
 }
 
-func clientRequestSSHTicket(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+func adminListSSHTickets(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
 	var params struct {
-		SourceClientUUID string `json:"source_client_uuid"`
-		TargetClientUUID string `json:"target_client_uuid"`
-		DurationSeconds  int    `json:"duration_seconds"`
-		TargetUser       string `json:"target_user"`
+		Status       string `json:"status"`
+		TargetClient string `json:"target_client"`
+		SourceClient string `json:"source_client"`
+		Limit        int    `json:"limit"`
+		Offset       int    `json:"offset"`
 	}
 	if err := req.BindParams(&params); err != nil {
 		return nil, rpc.MakeError(rpc.InvalidParams, err.Error(), nil)
+	}
+	tickets, total, err := ssh.ListSSHTickets(ssh.TicketFilter{
+		Status:       strings.TrimSpace(params.Status),
+		TargetClient: strings.TrimSpace(params.TargetClient),
+		SourceClient: strings.TrimSpace(params.SourceClient),
+		Limit:        params.Limit,
+		Offset:       params.Offset,
+	})
+	if err != nil {
+		return nil, rpc.MakeError(rpc.InternalError, "Failed to list SSH tickets: "+err.Error(), nil)
+	}
+	return map[string]any{
+		"tickets": tickets,
+		"total":   total,
+	}, nil
+}
+
+func adminGetSSHTicket(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+	var params struct {
+		TicketID string `json:"ticket_id"`
+	}
+	if err := req.BindParams(&params); err != nil {
+		return nil, rpc.MakeError(rpc.InvalidParams, err.Error(), nil)
+	}
+	if params.TicketID == "" {
+		return nil, rpc.MakeError(rpc.InvalidParams, "ticket_id is required", nil)
+	}
+	ticket, err := ssh.GetSSHTicketByID(params.TicketID)
+	if err != nil {
+		return nil, rpc.MakeError(rpc.InvalidParams, "Ticket not found: "+err.Error(), nil)
+	}
+	return map[string]any{"ticket": ticket}, nil
+}
+
+func clientRequestSSHTicket(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+	var params struct {
+		SourceClientUUID string `json:"source_client_uuid"`
+		SourceClient     string `json:"source_client"`
+		SourceUUID       string `json:"source_uuid"`
+		TargetClientUUID string `json:"target_client_uuid"`
+		TargetClient     string `json:"target_client"`
+		TargetUUID       string `json:"target_uuid"`
+		DurationSeconds  int    `json:"duration_seconds"`
+		TargetUser       string `json:"target_user"`
+		TargetHost       string `json:"target_host"`
+		TargetPort       int    `json:"target_port"`
+	}
+	if err := req.BindParams(&params); err != nil {
+		return nil, rpc.MakeError(rpc.InvalidParams, err.Error(), nil)
+	}
+
+	// 别名归一化处理
+	targetClientUUID := strings.TrimSpace(params.TargetClientUUID)
+	if targetClientUUID == "" {
+		targetClientUUID = strings.TrimSpace(params.TargetClient)
+	}
+	if targetClientUUID == "" {
+		targetClientUUID = strings.TrimSpace(params.TargetUUID)
+	}
+
+	sourceParamUUID := strings.TrimSpace(params.SourceClientUUID)
+	if sourceParamUUID == "" {
+		sourceParamUUID = strings.TrimSpace(params.SourceClient)
+	}
+	if sourceParamUUID == "" {
+		sourceParamUUID = strings.TrimSpace(params.SourceUUID)
 	}
 
 	meta := rpc.MetaFromContext(ctx)
@@ -222,8 +315,8 @@ func clientRequestSSHTicket(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 
 	if isAdmin {
 		if sourceUUID == "" {
-			if params.SourceClientUUID != "" {
-				sourceUUID = params.SourceClientUUID
+			if sourceParamUUID != "" {
+				sourceUUID = sourceParamUUID
 			} else {
 				sourceUUID = "admin-console"
 			}
@@ -239,11 +332,11 @@ func clientRequestSSHTicket(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 	// DB 口径在这里收敛，避免过期工单永久停留 active。
 	_ = ssh.ExpireStaleTickets()
 
-	if params.TargetClientUUID == "" {
+	if targetClientUUID == "" {
 		return nil, rpc.MakeError(rpc.InvalidParams, "target_client_uuid is required", nil)
 	}
 
-	targetClient, err := clients.GetClientByUUID(params.TargetClientUUID)
+	targetClient, err := clients.GetClientByUUID(targetClientUUID)
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Target client not found", nil)
 	}
@@ -251,7 +344,7 @@ func clientRequestSSHTicket(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 	// 执行节点隔离矩阵检验
 	if !isAdmin {
 		// 禁止节点向自身申请
-		if sourceUUID == params.TargetClientUUID {
+		if sourceUUID == targetClientUUID {
 			return nil, rpc.MakeError(rpc.InvalidParams, "Cannot request SSH ticket to self", nil)
 		}
 
@@ -296,25 +389,41 @@ func clientRequestSSHTicket(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 	targetHost := targetClient.IPv4
 	targetPort := 22
 
-	// 支持从节点 Tags 中解析自定义端口或主机，例如 "ssh_port:2222;ssh_host:10.144.144.81"
-	if targetClient.Tags != "" {
-		for _, tag := range strings.Split(targetClient.Tags, ";") {
-			t := strings.TrimSpace(tag)
-			if strings.HasPrefix(t, "ssh_port:") {
-				if p, err := strconv.Atoi(strings.TrimPrefix(t, "ssh_port:")); err == nil && p > 0 {
-					targetPort = p
+	// 允许调用方在入参中显式指定目标 host 和 port
+	if params.TargetHost != "" {
+		targetHost = strings.TrimSpace(params.TargetHost)
+	}
+	if params.TargetPort > 0 {
+		targetPort = params.TargetPort
+	}
+
+		// 若未显式传入，支持从节点 Tags 中健壮解析自定义端口或主机，如 "ssh_port: 2222; ssh_host: 10.144.144.81"
+		if targetClient.Tags != "" {
+			for _, tag := range strings.Split(targetClient.Tags, ";") {
+				parts := strings.SplitN(tag, ":", 2)
+				if len(parts) != 2 {
+					continue
 				}
-			} else if strings.HasPrefix(t, "ssh_host:") {
-				h := strings.TrimPrefix(t, "ssh_host:")
-				if h != "" {
-					targetHost = h
+				key := strings.ToLower(strings.TrimSpace(parts[0]))
+				val := strings.TrimSpace(parts[1])
+				if params.TargetPort <= 0 && key == "ssh_port" {
+					if p, err := strconv.Atoi(val); err == nil && p > 0 {
+						targetPort = p
+					}
+				} else if params.TargetHost == "" && key == "ssh_host" {
+					if val != "" {
+						targetHost = val
+					}
 				}
 			}
 		}
-	}
 
 	if targetHost == "" {
-		targetHost = "127.0.0.1"
+		if targetClient.IPv6 != "" {
+			targetHost = targetClient.IPv6
+		} else {
+			targetHost = "127.0.0.1"
+		}
 	}
 
 	remoteIP := ""
@@ -325,23 +434,21 @@ func clientRequestSSHTicket(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 	// 核心安全重构：为每个 Ticket 动态生成单次专属临时密钥对（Ephemeral Keypair）
 	// ticket.PublicKey 注入目标节点，专属临时私钥 ephemPriv 返回给调用方，
 	// 彻底杜绝全局主私钥泄露给客户端！
-	ticket, ephemPriv, err := ssh.CreateSSHTicket(sourceUUID, params.TargetClientUUID, "", targetUser, targetHost, targetPort, remoteIP, duration)
+	ticket, ephemPriv, err := ssh.CreateSSHTicket(sourceUUID, targetClientUUID, "", targetUser, targetHost, targetPort, remoteIP, duration)
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, "Failed to create SSH ticket: "+err.Error(), nil)
 	}
 
 	// 投递回执（advisory）：agent 在线=delivered（直接写入 WS）；离线但曾建立 v2 会话=queued
-	// （入 5min TTL 队列，重连后按序回放）；从未以 v2 接入=offline。避免申请者拿着永不生效的
-	// 私钥无从判断。注意 delivered 表示「派发时 agent 在线」，若该次 WS 写入失败会降级入队，
-	// 回执仍为 delivered——回执只描述传输意图，agent 侧写入结果不回传。
+	// （入 5min TTL 队列，重连后按序回放）；从未以 v2 接入=offline。
 	delivery := "offline"
-	if agent_runtime.IsV2Client(params.TargetClientUUID) {
+	if agent_runtime.IsV2Client(targetClientUUID) {
 		delivery = "queued"
 	}
-	if agent_runtime.GetConnectedClient(params.TargetClientUUID) != nil {
+	if agent_runtime.GetConnectedClient(targetClientUUID) != nil {
 		delivery = "delivered"
 	}
-	agent_runtime.DispatchV2Event(params.TargetClientUUID, v2.MethodAgentSSHAuthorize, v2.SSHAuthorizeParams{
+	agent_runtime.DispatchV2Event(targetClientUUID, v2.MethodAgentSSHAuthorize, v2.SSHAuthorizeParams{
 		TicketID:   ticket.TicketID,
 		PublicKey:  ticket.PublicKey,
 		TargetUser: targetUser,
@@ -360,9 +467,9 @@ func clientRequestSSHTicket(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 			"port": targetPort,
 			"user": targetUser,
 		},
-			"ssh_command": formatSSHCommand(targetPort, targetUser, targetHost),
-		}, nil
-	}
+		"ssh_command": formatSSHCommand(targetPort, targetUser, targetHost),
+	}, nil
+}
 
 func clientRevokeSSHTicket(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
 	var params struct {
@@ -411,19 +518,27 @@ func clientRevokeSSHTicket(ctx context.Context, req *rpc.JsonRpcRequest) (any, *
 	return map[string]any{"success": true}, nil
 }
 
-// formatSSHCommand 格式化客户端便捷连接命令
+// formatSSHCommand 格式化客户端便捷连接命令（支持 IPv6 自动括号包裹）
 func formatSSHCommand(port int, user, host string) string {
-	if user != "" {
-		return fmt.Sprintf("ssh -p %d %s@%s", port, user, host)
+	hostPart := host
+	if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
+		hostPart = fmt.Sprintf("[%s]", host)
 	}
-	return fmt.Sprintf("ssh -p %d %s", port, host)
+	if user != "" {
+		return fmt.Sprintf("ssh -p %d %s@%s", port, user, hostPart)
+	}
+	return fmt.Sprintf("ssh -p %d %s", port, hostPart)
 }
 
 // resolveTargetUser 推导目标节点的 SSH 登录账户名：
 // 1. 如果调用方显式传递了 targetUser，直接采纳；
-// 2. 如果目标节点 Tags 显式配置了 "ssh_user:<user>"，优先采纳；
+// 2. 如果目标节点 Tags 显式配置了 "ssh_user:<user>"（大小写不敏感），优先采纳；
 // 3. 否则根据操作系统及云厂商环境智能推导：
-//    - Windows: 返回 ""（由 Agent 默认写入 Administrator 授权）
+//    - Windows: 返回 "Administrator"（输出标准格式的明确连接指令）
+//    - macOS / Darwin: AWS 上为 "ec2-user"，常规为 "admin"（macOS 默认禁用 root ssh）
+//    - FreeBSD / OpenBSD: AWS 上为 "ec2-user"，常规为 "freebsd"
+//    - Azure Linux: "azureuser"
+//    - Oracle Cloud (OCI): "opc"
 //    - Ubuntu: "ubuntu"
 //    - Debian: 若节点名/Tags 表明为 AWS Lightsail/AWS 则为 "admin"，否则 "root"
 //    - CentOS / Rocky / AlmaLinux / RHEL / Fedora: 若 AWS EC2 则为 "ec2-user"，否则 "root"
@@ -439,13 +554,15 @@ func resolveTargetUser(client *models.Client, explicitUser string) string {
 		return "root"
 	}
 
-	// 1. 检查节点 Tags 中的显式 ssh_user 配置
+	// 1. 检查节点 Tags 中的显式 ssh_user 配置（支持不区分大小写及键值空格修剪）
 	if client.Tags != "" {
 		for _, tag := range strings.Split(client.Tags, ";") {
-			t := strings.TrimSpace(tag)
-			if strings.HasPrefix(t, "ssh_user:") {
-				if u := strings.TrimSpace(strings.TrimPrefix(t, "ssh_user:")); u != "" {
-					return u
+			parts := strings.SplitN(tag, ":", 2)
+			if len(parts) == 2 {
+				key := strings.ToLower(strings.TrimSpace(parts[0]))
+				val := strings.TrimSpace(parts[1])
+				if key == "ssh_user" && val != "" {
+					return val
 				}
 			}
 		}
@@ -458,9 +575,30 @@ func resolveTargetUser(client *models.Client, explicitUser string) string {
 
 	isAWS := strings.Contains(nameLower, "aws") || strings.Contains(tagsLower, "aws")
 	isLightsail := strings.Contains(nameLower, "lightsail") || strings.Contains(tagsLower, "lightsail")
+	isAzure := strings.Contains(nameLower, "azure") || strings.Contains(tagsLower, "azure")
+	isOCI := strings.Contains(nameLower, "oci") || strings.Contains(tagsLower, "oci") ||
+		strings.Contains(nameLower, "oracle") || strings.Contains(tagsLower, "oracle")
 
 	if strings.Contains(osLower, "windows") {
-		return ""
+		return "Administrator"
+	}
+	if strings.Contains(osLower, "darwin") || strings.Contains(osLower, "macos") || strings.Contains(osLower, "mac os") {
+		if isAWS {
+			return "ec2-user"
+		}
+		return "admin"
+	}
+	if strings.Contains(osLower, "freebsd") || strings.Contains(osLower, "openbsd") {
+		if isAWS {
+			return "ec2-user"
+		}
+		return "freebsd"
+	}
+	if isAzure {
+		return "azureuser"
+	}
+	if isOCI {
+		return "opc"
 	}
 	if strings.Contains(osLower, "ubuntu") {
 		return "ubuntu"

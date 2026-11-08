@@ -133,15 +133,28 @@ func GetSSHTicketByID(ticketID string) (*models.SSHTicket, error) {
 	return &ticket, nil
 }
 
-// RevokeSSHTicket 吊销 Ticket
+// RevokeSSHTicket 吊销 Ticket（允许终结任何非 revoked 状态工单，具备幂等性）
 func RevokeSSHTicket(ticketID string) error {
 	now := time.Now().UTC()
-	return dbcore.GetDBInstance().Model(&models.SSHTicket{}).
-		Where("ticket_id = ? AND status = ?", ticketID, "active").
+	res := dbcore.GetDBInstance().Model(&models.SSHTicket{}).
+		Where("ticket_id = ? AND status != ?", ticketID, "revoked").
 		Updates(map[string]interface{}{
 			"status":     "revoked",
 			"revoked_at": &now,
-		}).Error
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		var count int64
+		if err := dbcore.GetDBInstance().Model(&models.SSHTicket{}).Where("ticket_id = ?", ticketID).Count(&count).Error; err != nil {
+			return err
+		}
+		if count == 0 {
+			return fmt.Errorf("ticket not found: %s", ticketID)
+		}
+	}
+	return nil
 }
 
 // ExpireStaleTickets 将已过期的 Ticket 标记为 expired
@@ -153,16 +166,69 @@ func ExpireStaleTickets() error {
 }
 
 // UpdateSSHTicketResult 更新 Ticket 执行状态与错误信息
+// 终态保护：只有在非 revoked、expired 终态下才允许转为 failed，避免覆盖管理员主动吊销
 func UpdateSSHTicketResult(ticketID string, success bool, errMsg string) error {
-	updates := map[string]interface{}{}
 	if !success {
-		updates["status"] = "failed"
-		updates["error_message"] = errMsg
-	} else {
-		updates["error_message"] = ""
+		return dbcore.GetDBInstance().Model(&models.SSHTicket{}).
+			Where("ticket_id = ? AND status NOT IN ('revoked', 'expired')", ticketID).
+			Updates(map[string]interface{}{
+				"status":        "failed",
+				"error_message": errMsg,
+			}).Error
 	}
 	return dbcore.GetDBInstance().Model(&models.SSHTicket{}).
 		Where("ticket_id = ?", ticketID).
-		Updates(updates).Error
+		Update("error_message", "").Error
 }
+
+// TicketFilter 定义工单查询筛选条件
+type TicketFilter struct {
+	Status       string
+	TargetClient string
+	SourceClient string
+	Limit        int
+	Offset       int
+}
+
+// ListSSHTickets 分页查询 SSH 工单列表
+func ListSSHTickets(filter TicketFilter) ([]models.SSHTicket, int64, error) {
+	db := dbcore.GetDBInstance().Model(&models.SSHTicket{})
+	if filter.Status != "" {
+		db = db.Where("status = ?", filter.Status)
+	}
+	if filter.TargetClient != "" {
+		db = db.Where("target_client = ?", filter.TargetClient)
+	}
+	if filter.SourceClient != "" {
+		db = db.Where("source_client = ?", filter.SourceClient)
+	}
+
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 50
+	} else if limit > 200 {
+		limit = 200
+	}
+
+	offset := filter.Offset
+	if offset < 0 {
+		offset = 0
+	}
+
+	var tickets []models.SSHTicket
+	err := db.Order("created_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&tickets).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	return tickets, total, nil
+}
+
 

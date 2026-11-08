@@ -126,6 +126,14 @@ func handleV2RPC(uuid string, req v2.Request, allowWait bool) v2.Response {
 		if params.TicketID == "" {
 			return v2.Error(req.ID, -32602, "ticket_id is required", nil)
 		}
+		// 安全校验：核验上报结果的节点是否为该工单的目标授权节点，防止跨节点伪造回报
+		ticket, err := ssh.GetSSHTicketByID(params.TicketID)
+		if err != nil {
+			return v2.Error(req.ID, -32004, "ticket not found", err.Error())
+		}
+		if ticket.TargetClient != uuid {
+			return v2.Error(req.ID, -32003, "permission denied: target client mismatch", nil)
+		}
 		if err := ssh.UpdateSSHTicketResult(params.TicketID, params.Success, params.Error); err != nil {
 			return v2.Error(req.ID, -32000, "failed to update ticket result", err.Error())
 		}
