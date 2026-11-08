@@ -151,3 +151,18 @@ func ExpireStaleTickets() error {
 		Where("status = ? AND expires_at < ?", "active", now).
 		Update("status", "expired").Error
 }
+
+// UpdateSSHTicketResult 更新 Ticket 执行状态与错误信息
+func UpdateSSHTicketResult(ticketID string, success bool, errMsg string) error {
+	updates := map[string]interface{}{}
+	if !success {
+		updates["status"] = "failed"
+		updates["error_message"] = errMsg
+	} else {
+		updates["error_message"] = ""
+	}
+	return dbcore.GetDBInstance().Model(&models.SSHTicket{}).
+		Where("ticket_id = ?", ticketID).
+		Updates(updates).Error
+}
+

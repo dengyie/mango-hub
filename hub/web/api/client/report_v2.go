@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dengyie/mangohub/hub/database/clients"
+	"github.com/dengyie/mangohub/hub/database/ssh"
 	"github.com/dengyie/mangohub/hub/database/tasks"
 	v2 "github.com/dengyie/mangohub/hub/protocol/v2"
 	"github.com/dengyie/mangohub/hub/utils/notifier"
@@ -115,6 +116,18 @@ func handleV2RPC(uuid string, req v2.Request, allowWait bool) v2.Response {
 		params.UUID = uuid
 		if !filemanager.Resolve(params) {
 			return v2.Error(req.ID, -32004, "unknown or expired file operation", nil)
+		}
+		return v2.Success(req.ID, gin.H{"status": "success"})
+	case v2.MethodAgentSSHTicketResult:
+		var params v2.SSHTicketResultParams
+		if err := bindV2Params(req.Params, &params); err != nil {
+			return v2.Error(req.ID, -32602, "invalid ssh ticket result params", err.Error())
+		}
+		if params.TicketID == "" {
+			return v2.Error(req.ID, -32602, "ticket_id is required", nil)
+		}
+		if err := ssh.UpdateSSHTicketResult(params.TicketID, params.Success, params.Error); err != nil {
+			return v2.Error(req.ID, -32000, "failed to update ticket result", err.Error())
 		}
 		return v2.Success(req.ID, gin.H{"status": "success"})
 	default:

@@ -84,3 +84,71 @@ func TestV2BasicInfoFillsRegionFromGeoIP(t *testing.T) {
 		t.Fatalf("expected GeoIP region to be saved, got %q", got.Region)
 	}
 }
+
+func TestV2SSHTicketResultHandling(t *testing.T) {
+	flags.DatabaseType = "sqlite"
+	flags.DatabaseFile = "file:v2_ssh_ticket_result?mode=memory&cache=shared"
+	db := dbcore.GetDBInstance()
+
+	ticketID := "ticket-ack-test-1"
+	now := time.Now().UTC()
+	ticket := models.SSHTicket{
+		TicketID:     ticketID,
+		SourceClient: "source-1",
+		TargetClient: "target-1",
+		PublicKey:    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI mock",
+		Status:       "active",
+		TargetUser:   "ubuntu",
+		TargetHost:   "10.0.0.1",
+		ExpiresAt:    now.Add(time.Hour),
+		CreatedAt:    now,
+	}
+	if err := db.Create(&ticket).Error; err != nil {
+		t.Fatalf("create ticket: %v", err)
+	}
+
+	// 模拟 Agent 报告授权失败（如 user not found）
+	respFail := handleV2RPC("target-1", v2.Request{
+		JSONRPC: v2.Version,
+		Method:  v2.MethodAgentSSHTicketResult,
+		Params: v2.SSHTicketResultParams{
+			TicketID: ticketID,
+			Success:  false,
+			Error:    "user 'ubuntu' not found",
+		},
+		ID: "ticket-ack-1",
+	}, false)
+	if respFail.Error != nil {
+		t.Fatalf("handleV2RPC ticket result fail returned error: %+v", respFail.Error)
+	}
+
+	var updatedTicket models.SSHTicket
+	if err := db.First(&updatedTicket, "ticket_id = ?", ticketID).Error; err != nil {
+		t.Fatalf("load ticket: %v", err)
+	}
+	if updatedTicket.Status != "failed" || updatedTicket.ErrorMessage != "user 'ubuntu' not found" {
+		t.Fatalf("expected status=failed and error recorded, got %+v", updatedTicket)
+	}
+
+	// 模拟 Agent 报告授权成功
+	respSuccess := handleV2RPC("target-1", v2.Request{
+		JSONRPC: v2.Version,
+		Method:  v2.MethodAgentSSHTicketResult,
+		Params: v2.SSHTicketResultParams{
+			TicketID: ticketID,
+			Success:  true,
+		},
+		ID: "ticket-ack-2",
+	}, false)
+	if respSuccess.Error != nil {
+		t.Fatalf("handleV2RPC ticket result success returned error: %+v", respSuccess.Error)
+	}
+
+	if err := db.First(&updatedTicket, "ticket_id = ?", ticketID).Error; err != nil {
+		t.Fatalf("load ticket: %v", err)
+	}
+	if updatedTicket.ErrorMessage != "" {
+		t.Fatalf("expected empty error_message on success, got %q", updatedTicket.ErrorMessage)
+	}
+}
+

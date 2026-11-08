@@ -20,9 +20,10 @@ const (
 	MethodAgentPull          = "agent.pull"
 	MethodAgentFile          = "agent.file"
 	MethodAgentFileResult    = "agent.file.result"
-	MethodAgentSSHAuthorize  = "agent.ssh.authorize"
-	MethodAgentSSHRevoke     = "agent.ssh.revoke"
-)
+		MethodAgentSSHAuthorize    = "agent.ssh.authorize"
+		MethodAgentSSHRevoke       = "agent.ssh.revoke"
+		MethodAgentSSHTicketResult = "agent.ssh.ticketResult"
+	)
 
 type SSHAuthorizeParams struct {
 	TicketID   string    `json:"ticket_id"`
@@ -34,6 +35,12 @@ type SSHAuthorizeParams struct {
 
 type SSHRevokeParams struct {
 	TicketID string `json:"ticket_id"`
+}
+
+type SSHTicketResultParams struct {
+	TicketID string `json:"ticket_id"`
+	Success  bool   `json:"success"`
+	Error    string `json:"error,omitempty"`
 }
 
 type Request struct {

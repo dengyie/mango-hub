@@ -62,17 +62,43 @@ func TestSSHKeyAndTicketCRUD(t *testing.T) {
 		t.Fatalf("Decrypted ephemeral private key mismatch")
 	}
 
-	if err := RevokeSSHTicket(ticket.TicketID); err != nil {
-		t.Fatalf("RevokeSSHTicket failed: %v", err)
-	}
+		if err := RevokeSSHTicket(ticket.TicketID); err != nil {
+			t.Fatalf("RevokeSSHTicket failed: %v", err)
+		}
 
-	revoked, err := GetSSHTicketByID(ticket.TicketID)
-	if err != nil || revoked.Status != "revoked" {
-		t.Fatalf("Ticket should be revoked, got: %+v", revoked)
-	}
+		revoked, err := GetSSHTicketByID(ticket.TicketID)
+		if err != nil || revoked.Status != "revoked" {
+			t.Fatalf("Ticket should be revoked, got: %+v", revoked)
+		}
 
-	// 清理该测试创建的 key，避免污染后续测试
-	_ = DeleteSSHKey(key.ID)
+		// 测试更新失败状态与错误信息
+		failTicket, _, err := CreateSSHTicket("client-a", "client-b", key.ID, "ubuntu", "10.144.144.82", 22, "127.0.0.1", time.Hour)
+		if err != nil {
+			t.Fatalf("CreateSSHTicket failed: %v", err)
+		}
+		if err := UpdateSSHTicketResult(failTicket.TicketID, false, "user 'ubuntu' not found"); err != nil {
+			t.Fatalf("UpdateSSHTicketResult failed: %v", err)
+		}
+		failedRecord, err := GetSSHTicketByID(failTicket.TicketID)
+		if err != nil || failedRecord.Status != "failed" || failedRecord.ErrorMessage != "user 'ubuntu' not found" {
+			t.Fatalf("Ticket status should be failed with error, got: %+v", failedRecord)
+		}
+
+		// 测试更新成功状态
+		okTicket, _, err := CreateSSHTicket("client-a", "client-b", key.ID, "admin", "10.144.144.82", 22, "127.0.0.1", time.Hour)
+		if err != nil {
+			t.Fatalf("CreateSSHTicket failed: %v", err)
+		}
+		if err := UpdateSSHTicketResult(okTicket.TicketID, true, ""); err != nil {
+			t.Fatalf("UpdateSSHTicketResult failed: %v", err)
+		}
+		okRecord, err := GetSSHTicketByID(okTicket.TicketID)
+		if err != nil || okRecord.Status != "active" || okRecord.ErrorMessage != "" {
+			t.Fatalf("Ticket status should be active with empty error, got: %+v", okRecord)
+		}
+
+		// 清理该测试创建的 key，避免污染后续测试
+		_ = DeleteSSHKey(key.ID)
 }
 
 func TestEnsureDefaultFleetKey(t *testing.T) {

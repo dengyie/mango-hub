@@ -36,7 +36,8 @@ type SSHTicket struct {
 	SSHKeyID      string     `json:"ssh_key_id" gorm:"type:varchar(36);index"`
 	PublicKey     string     `json:"public_key" gorm:"type:text;not null"`
 	PrivateKeyEnc string     `json:"-" gorm:"type:text"`                              // Ephemeral private key AES-256-GCM encrypted
-	Status        string     `json:"status" gorm:"type:varchar(20);default:'active'"` // active, revoked, expired
+	Status        string     `json:"status" gorm:"type:varchar(20);default:'active'"` // active, revoked, expired, failed
+	ErrorMessage  string     `json:"error_message,omitempty" gorm:"type:text"`
 	TargetUser    string     `json:"target_user" gorm:"type:varchar(50);default:'ubuntu'"`
 	TargetHost    string     `json:"target_host" gorm:"type:varchar(100)"`
 	TargetPort    int        `json:"target_port" gorm:"type:int;default:22"`

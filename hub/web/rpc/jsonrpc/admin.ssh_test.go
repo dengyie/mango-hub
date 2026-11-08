@@ -196,3 +196,147 @@ func TestSSHManagementAndTicketFlow(t *testing.T) {
 		t.Fatalf("Ticket should be revoked in DB, got: %+v", dbTicket)
 	}
 }
+
+func TestResolveTargetUser(t *testing.T) {
+	tests := []struct {
+		name         string
+		client       *models.Client
+		explicitUser string
+		expected     string
+	}{
+		{
+			name:         "Explicit user takes top priority",
+			client:       &models.Client{Name: "aws-tokyo", OS: "Debian GNU/Linux 12 (bookworm)", Tags: "ssh_user:admin"},
+			explicitUser: "custom-deployer",
+			expected:     "custom-deployer",
+		},
+		{
+			name:         "Tag ssh_user takes priority over OS heuristics",
+			client:       &models.Client{Name: "custom-vps", OS: "Ubuntu 22.04 LTS", Tags: "region:jp;ssh_user:admin;ssh_port:2222"},
+			explicitUser: "",
+			expected:     "admin",
+		},
+		{
+			name:         "Windows OS returns empty user for agent default handling",
+			client:       &models.Client{Name: "win-server", OS: "Windows Server 2022"},
+			explicitUser: "",
+			expected:     "",
+		},
+		{
+			name:         "Ubuntu OS returns ubuntu",
+			client:       &models.Client{Name: "tokyo-ubuntu", OS: "Ubuntu 24.04 LTS"},
+			explicitUser: "",
+			expected:     "ubuntu",
+		},
+		{
+			name:         "Debian on AWS/Lightsail returns admin",
+			client:       &models.Client{Name: "aws-tokyo-lightsail", OS: "Debian GNU/Linux 12 (bookworm)"},
+			explicitUser: "",
+			expected:     "admin",
+		},
+		{
+			name:         "Debian with aws in tags returns admin",
+			client:       &models.Client{Name: "tokyo-node", OS: "Debian GNU/Linux 12", Tags: "cloud:aws"},
+			explicitUser: "",
+			expected:     "admin",
+		},
+		{
+			name:         "Standard Debian VPS returns root",
+			client:       &models.Client{Name: "hetzner-node", OS: "Debian GNU/Linux 12 (bookworm)"},
+			explicitUser: "",
+			expected:     "root",
+		},
+		{
+			name:         "CentOS on AWS returns ec2-user",
+			client:       &models.Client{Name: "aws-oregon-centos", OS: "CentOS Stream 9"},
+			explicitUser: "",
+			expected:     "ec2-user",
+		},
+		{
+			name:         "Standard CentOS/Rocky/Alma returns root",
+			client:       &models.Client{Name: "racknerd-rocky", OS: "Rocky Linux 9.3 (Blue Onyx)"},
+			explicitUser: "",
+			expected:     "root",
+		},
+		{
+			name:         "Amazon Linux returns ec2-user",
+			client:       &models.Client{Name: "my-amzn-node", OS: "Amazon Linux 2023"},
+			explicitUser: "",
+			expected:     "ec2-user",
+		},
+		{
+			name:         "Alpine/Arch Linux returns root",
+			client:       &models.Client{Name: "edge-gateway", OS: "Alpine Linux v3.19"},
+			explicitUser: "",
+			expected:     "root",
+		},
+		{
+			name:         "Nil client or unknown OS falls back to root",
+			client:       &models.Client{Name: "unknown-box", OS: "CustomOS 1.0"},
+			explicitUser: "",
+			expected:     "root",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveTargetUser(tt.client, tt.explicitUser)
+			if got != tt.expected {
+				t.Errorf("resolveTargetUser() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestRequestSSHTicketTargetUserInference(t *testing.T) {
+	flags.DatabaseType = flags.DatabaseTypeSQLite
+	flags.DatabaseFile = "file:ssh_user_infer_test?mode=memory&cache=shared"
+	db := dbcore.GetDBInstance()
+
+	// 模拟 aws-tokyo Lightsail 节点
+	awsTokyo := models.Client{
+		UUID:      "aws-tokyo-uuid",
+		Token:     "aws-tokyo-token",
+		Name:      "aws-tokyo",
+		OS:        "Debian GNU/Linux 12 (bookworm)",
+		Group:     "production",
+		Tags:      "ssh_user:admin;ssh_port:22",
+		IPv4:      "52.192.36.79",
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	_ = db.Create(&awsTokyo)
+
+	adminCtx := rpc.NewContextWithMeta(context.Background(), &rpc.ContextMeta{
+		Permission: rpc.RoleAdmin,
+		User:       &models.User{Username: "admin"},
+	})
+
+	// 不传 target_user，应当自动解析出 tags 里的 admin
+	req := &rpc.JsonRpcRequest{
+		Params: map[string]any{
+			"target_client_uuid": "aws-tokyo-uuid",
+			"duration_seconds":   1800,
+		},
+	}
+	res, rpcErr := clientRequestSSHTicket(adminCtx, req)
+	if rpcErr != nil {
+		t.Fatalf("clientRequestSSHTicket failed: %v", rpcErr)
+	}
+	resMap := res.(map[string]any)
+	ticket := resMap["ticket"].(*models.SSHTicket)
+	targetInfo := resMap["target_info"].(map[string]any)
+	sshCmd := resMap["ssh_command"].(string)
+
+	if ticket.TargetUser != "admin" {
+		t.Errorf("expected ticket.TargetUser to be 'admin', got %q", ticket.TargetUser)
+	}
+	if targetInfo["user"] != "admin" {
+		t.Errorf("expected target_info.user to be 'admin', got %q", targetInfo["user"])
+	}
+	expectedCmd := "ssh -p 22 admin@52.192.36.79"
+	if sshCmd != expectedCmd {
+		t.Errorf("expected ssh_command %q, got %q", expectedCmd, sshCmd)
+	}
+}
+

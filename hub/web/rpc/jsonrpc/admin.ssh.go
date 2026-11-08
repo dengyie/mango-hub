@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dengyie/mangohub/hub/database/clients"
+	"github.com/dengyie/mangohub/hub/database/models"
 	"github.com/dengyie/mangohub/hub/database/ssh"
 	"github.com/dengyie/mangohub/hub/pkg/rpc"
 	v2 "github.com/dengyie/mangohub/hub/protocol/v2"
@@ -290,13 +291,7 @@ func clientRequestSSHTicket(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 		duration = 24 * time.Hour
 	}
 
-	targetUser := params.TargetUser
-	if targetUser == "" {
-		targetUser = "ubuntu"
-		if targetClient.OS == "debian" || targetClient.OS == "centos" || targetClient.OS == "arch" {
-			targetUser = "root"
-		}
-	}
+	targetUser := resolveTargetUser(&targetClient, params.TargetUser)
 
 	targetHost := targetClient.IPv4
 	targetPort := 22
@@ -365,9 +360,9 @@ func clientRequestSSHTicket(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 			"port": targetPort,
 			"user": targetUser,
 		},
-		"ssh_command": fmt.Sprintf("ssh -p %d %s@%s", targetPort, targetUser, targetHost),
-	}, nil
-}
+			"ssh_command": formatSSHCommand(targetPort, targetUser, targetHost),
+		}, nil
+	}
 
 func clientRevokeSSHTicket(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
 	var params struct {
@@ -414,4 +409,82 @@ func clientRevokeSSHTicket(ctx context.Context, req *rpc.JsonRpcRequest) (any, *
 	})
 
 	return map[string]any{"success": true}, nil
+}
+
+// formatSSHCommand 格式化客户端便捷连接命令
+func formatSSHCommand(port int, user, host string) string {
+	if user != "" {
+		return fmt.Sprintf("ssh -p %d %s@%s", port, user, host)
+	}
+	return fmt.Sprintf("ssh -p %d %s", port, host)
+}
+
+// resolveTargetUser 推导目标节点的 SSH 登录账户名：
+// 1. 如果调用方显式传递了 targetUser，直接采纳；
+// 2. 如果目标节点 Tags 显式配置了 "ssh_user:<user>"，优先采纳；
+// 3. 否则根据操作系统及云厂商环境智能推导：
+//    - Windows: 返回 ""（由 Agent 默认写入 Administrator 授权）
+//    - Ubuntu: "ubuntu"
+//    - Debian: 若节点名/Tags 表明为 AWS Lightsail/AWS 则为 "admin"，否则 "root"
+//    - CentOS / Rocky / AlmaLinux / RHEL / Fedora: 若 AWS EC2 则为 "ec2-user"，否则 "root"
+//    - Amazon Linux: "ec2-user"
+//    - Arch / Alpine: "root"
+//    - 通用回退兜底: "root"
+func resolveTargetUser(client *models.Client, explicitUser string) string {
+	if explicitUser != "" {
+		return strings.TrimSpace(explicitUser)
+	}
+
+	if client == nil {
+		return "root"
+	}
+
+	// 1. 检查节点 Tags 中的显式 ssh_user 配置
+	if client.Tags != "" {
+		for _, tag := range strings.Split(client.Tags, ";") {
+			t := strings.TrimSpace(tag)
+			if strings.HasPrefix(t, "ssh_user:") {
+				if u := strings.TrimSpace(strings.TrimPrefix(t, "ssh_user:")); u != "" {
+					return u
+				}
+			}
+		}
+	}
+
+	// 2. 基于 OS 及云特征推导
+	osLower := strings.ToLower(client.OS)
+	nameLower := strings.ToLower(client.Name)
+	tagsLower := strings.ToLower(client.Tags)
+
+	isAWS := strings.Contains(nameLower, "aws") || strings.Contains(tagsLower, "aws")
+	isLightsail := strings.Contains(nameLower, "lightsail") || strings.Contains(tagsLower, "lightsail")
+
+	if strings.Contains(osLower, "windows") {
+		return ""
+	}
+	if strings.Contains(osLower, "ubuntu") {
+		return "ubuntu"
+	}
+	if strings.Contains(osLower, "debian") {
+		if isLightsail || isAWS {
+			return "admin"
+		}
+		return "root"
+	}
+	if strings.Contains(osLower, "centos") || strings.Contains(osLower, "rocky") ||
+		strings.Contains(osLower, "almalinux") || strings.Contains(osLower, "redhat") ||
+		strings.Contains(osLower, "fedora") {
+		if isAWS {
+			return "ec2-user"
+		}
+		return "root"
+	}
+	if strings.Contains(osLower, "amazon") {
+		return "ec2-user"
+	}
+	if strings.Contains(osLower, "arch") || strings.Contains(osLower, "alpine") {
+		return "root"
+	}
+
+	return "root"
 }
