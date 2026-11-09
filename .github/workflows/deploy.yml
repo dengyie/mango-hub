@@ -109,6 +109,7 @@ jobs:
           source: "bin/mangohub"
           target: "/home/mango/mangohub/bin"
           strip_components: 1
+          overwrite: true
 
       - name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1.2.0
