@@ -6,11 +6,12 @@
 
 [![License](https://img.shields.io/badge/license-MIT-green.svg?style=flat-square)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.24%2B-00ADD8.svg?style=flat-square&logo=go&logoColor=white)](https://go.dev/)
-[![Docker Image](https://img.shields.io/badge/docker-ghcr.io%2Fmangohub-blue.svg?style=flat-square&logo=docker&logoColor=white)](https://github.com/dengyie/mango-hub/pkgs/container/mangohub)
-[![Architecture](https://img.shields.io/badge/architecture-Agent%20%2B%20Hub%20Monorepo-orange.svg?style=flat-square)](#-repository-architecture)
+[![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED.svg?style=flat-square&logo=docker&logoColor=white)](https://github.com/dengyie/mango-hub/pkgs/container/mangohub)
+[![TypeScript](https://img.shields.io/badge/TypeScript-Next.js%20UI-3178C6.svg?style=flat-square&logo=typescript&logoColor=white)](https://nextjs.org/)
+[![Architecture](https://img.shields.io/badge/Architecture-Agent%20%2B%20Hub%20Monorepo-orange.svg?style=flat-square)](#repository-architecture)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg?style=flat-square)]()
 
-[English](./README.md) • [简体中文](./README_zh-cn.md)
+[English](./README.md) · [简体中文](./README_zh-cn.md)
 
 <p align="center">
   <img src="./docs/images/dashboard.png" alt="MangoHub Dashboard" width="880" style="border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);" />
@@ -20,7 +21,7 @@
 
 ---
 
-## 🌟 Key Features
+## Key Features
 
 ### 1. High-Performance Telemetry & Zero-Overhead Sampling
 - **Sub-second precision**: Real-time metrics streaming with minimal CPU and memory footprint.
@@ -49,7 +50,7 @@
 
 ---
 
-## 🏗️ Repository Architecture
+## Repository Architecture
 
 This repository is organized as a unified Go Monorepo:
 
@@ -74,7 +75,7 @@ mangohub/
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Go 1.24+ (Go 1.25+ recommended for Hub)
@@ -85,8 +86,8 @@ mangohub/
 
 ```bash
 # Clone the repository
-git clone https://github.com/dengyie/mangohub.git
-cd mangohub
+git clone https://github.com/dengyie/mango-hub.git
+cd mango-hub
 
 # Build both Agent and Hub
 make all
@@ -116,6 +117,6 @@ Access the dashboard at `http://localhost:25774`.
 
 ---
 
-## 📄 License
+## License
 
 Mangohub is released under the [MIT License](./LICENSE).

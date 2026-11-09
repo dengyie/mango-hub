@@ -6,11 +6,12 @@
 
 [![License](https://img.shields.io/badge/license-MIT-green.svg?style=flat-square)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.24%2B-00ADD8.svg?style=flat-square&logo=go&logoColor=white)](https://go.dev/)
-[![Docker Image](https://img.shields.io/badge/docker-ghcr.io%2Fmangohub-blue.svg?style=flat-square&logo=docker&logoColor=white)](https://github.com/dengyie/mango-hub/pkgs/container/mangohub)
-[![Architecture](https://img.shields.io/badge/architecture-Agent%20%2B%20Hub%20Monorepo-orange.svg?style=flat-square)](#-仓库结构)
+[![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED.svg?style=flat-square&logo=docker&logoColor=white)](https://github.com/dengyie/mango-hub/pkgs/container/mangohub)
+[![TypeScript](https://img.shields.io/badge/TypeScript-Next.js%20UI-3178C6.svg?style=flat-square&logo=typescript&logoColor=white)](https://nextjs.org/)
+[![Architecture](https://img.shields.io/badge/Architecture-Agent%20%2B%20Hub%20Monorepo-orange.svg?style=flat-square)](#仓库结构)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg?style=flat-square)]()
 
-[English](./README.md) • [简体中文](./README_zh-cn.md)
+[English](./README.md) · [简体中文](./README_zh-cn.md)
 
 <p align="center">
   <img src="./docs/images/dashboard.png" alt="MangoHub 仪表盘" width="880" style="border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);" />
@@ -20,7 +21,7 @@
 
 ---
 
-## 🌟 核心特性
+## 核心特性
 
 ### 1. 超低损耗高频指标采集与深度观测
 - **亚秒级实时推送**：极低系统资源占用，毫秒级指标聚合上报。
@@ -49,7 +50,7 @@
 
 ---
 
-## 🏗️ 仓库结构
+## 仓库结构
 
 本项目采用统一 Monorepo 组织结构：
 
@@ -74,41 +75,41 @@ mangohub/
 
 ---
 
-## 🚀 快速上手
+## 快速上手
 
 ### 环境要求
 - Go 1.24+（运行 Hub 推荐 Go 1.25+）
 - Node.js 20+（仅在重新构建前端静态资源时需要）
 - GCC / Clang / Zig（用于编译支持 SQLite 的 CGO 二进制）
 
-### 1. 编译源码
+### 1. 源码编译
 
 ```bash
 # 克隆仓库
-git clone https://github.com/dengyie/mangohub.git
-cd mangohub
+git clone https://github.com/dengyie/mango-hub.git
+cd mango-hub
 
-# 一键编译 Agent 与 Hub
+# 统一编译探针与服务端
 make all
 
-# 或按需单独编译：
-make hub      # 输出路径: ./bin/mangohub
-make agent    # 输出路径: ./bin/mangohub-agent
+# 或按需单独编译:
+make hub      # 产物路径: ./bin/mangohub
+make agent    # 产物路径: ./bin/mangohub-agent
 ```
 
-### 2. 运行 Mangohub 主控服务端
+### 2. 运行 Mangohub 服务端
 
 ```bash
-# 启动服务端（默认使用 SQLite 数据库）
+# 使用内置 SQLite 默认配置启动
 ./bin/mangohub server
 
-# 自定义监听地址
+# 或自定义监听端口
 MANGOHUB_LISTEN="0.0.0.0:25774" ./bin/mangohub server
 ```
 
-启动完成后即可在浏览器访问 `http://localhost:25774` 进入控制面板。
+启动完成后，通过浏览器访问 `http://localhost:25774` 即可进入控制台。
 
-### 3. 部署 Mangohub Agent 探针
+### 3. 部署 Mangohub 节点探针
 
 ```bash
 ./bin/mangohub-agent --endpoint "http://your-hub-ip:25774" --token "your-agent-token"
@@ -116,6 +117,6 @@ MANGOHUB_LISTEN="0.0.0.0:25774" ./bin/mangohub server
 
 ---
 
-## 📄 许可证
+## 许可证
 
 Mangohub 遵循 [MIT 开源许可证](./LICENSE)。
