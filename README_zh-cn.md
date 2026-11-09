@@ -1,10 +1,22 @@
-# Mangohub (简体中文)
+<div align="center">
 
-[English](./README.md) | [简体中文](./README_zh-cn.md)
+# MangoHub
 
-![Mangohub 仪表盘](./docs/images/dashboard.png)
+**面向云原生与边缘基础设施的企业级可观测与零信任运维管控中枢**
 
-**Mangohub** 是一套面向云原生与边缘基础设施的企业级可观测与运维管控平台。平台由高频低损耗的节点探针（`agent`）与集中控制面板（`hub`）构成，提供全维实时监控、零信任 Fleet SSH 凭据金库、边缘自适应防爆破限流、高精度磁盘 IO 剖析及算力任务管控能力。
+[![License](https://img.shields.io/badge/license-MIT-green.svg?style=flat-square)](LICENSE)
+[![Go Version](https://img.shields.io/badge/Go-1.24%2B-00ADD8.svg?style=flat-square&logo=go&logoColor=white)](https://go.dev/)
+[![Docker Image](https://img.shields.io/badge/docker-ghcr.io%2Fmangohub-blue.svg?style=flat-square&logo=docker&logoColor=white)](https://github.com/dengyie/mango-hub/pkgs/container/mangohub)
+[![Architecture](https://img.shields.io/badge/architecture-Agent%20%2B%20Hub%20Monorepo-orange.svg?style=flat-square)](#-仓库结构)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg?style=flat-square)]()
+
+[English](./README.md) • [简体中文](./README_zh-cn.md)
+
+<p align="center">
+  <img src="./docs/images/dashboard.png" alt="MangoHub 仪表盘" width="880" style="border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);" />
+</p>
+
+</div>
 
 ---
 

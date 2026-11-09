@@ -1,10 +1,22 @@
-# Mangohub
+<div align="center">
 
-[English](./README.md) | [简体中文](./README_zh-cn.md)
+# MangoHub
 
-![Mangohub Dashboard](./docs/images/dashboard.png)
+**Enterprise-Grade Cloud & Edge Infrastructure Observability, Zero-Trust SSH Fleet & Metrics Engine**
 
-**Mangohub** is an enterprise-grade cloud and edge infrastructure observability platform. It combines a lightweight, high-performance node telemetry daemon (`agent`) with a powerful master control plane (`hub`), delivering real-time metrics, zero-trust fleet SSH key management, edge rate-limiting, and deep hardware/computational workload monitoring.
+[![License](https://img.shields.io/badge/license-MIT-green.svg?style=flat-square)](LICENSE)
+[![Go Version](https://img.shields.io/badge/Go-1.24%2B-00ADD8.svg?style=flat-square&logo=go&logoColor=white)](https://go.dev/)
+[![Docker Image](https://img.shields.io/badge/docker-ghcr.io%2Fmangohub-blue.svg?style=flat-square&logo=docker&logoColor=white)](https://github.com/dengyie/mango-hub/pkgs/container/mangohub)
+[![Architecture](https://img.shields.io/badge/architecture-Agent%20%2B%20Hub%20Monorepo-orange.svg?style=flat-square)](#-repository-architecture)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg?style=flat-square)]()
+
+[English](./README.md) • [简体中文](./README_zh-cn.md)
+
+<p align="center">
+  <img src="./docs/images/dashboard.png" alt="MangoHub Dashboard" width="880" style="border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);" />
+</p>
+
+</div>
 
 ---
 
