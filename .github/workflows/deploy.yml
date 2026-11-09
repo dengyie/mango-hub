@@ -82,6 +82,34 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build Static Hub Binary on Runner
+        run: |
+          mkdir -p bin
+          BUILD_SHA=$(git rev-parse --short=7 HEAD)
+          echo "Building commit $BUILD_SHA in alpine musl container on runner..."
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/src" \
+            -w /src/hub \
+            -e CGO_ENABLED=1 \
+            golang:alpine \
+            sh -c "apk add --no-cache gcc musl-dev && go build -ldflags '-s -w -linkmode external -extldflags \"-static\" -X github.com/dengyie/mangohub/hub/utils.VersionHash=$BUILD_SHA' -trimpath -o /src/bin/mangohub ."
+          ls -lh bin/mangohub
+          file bin/mangohub
+
+      - name: Transfer Static Binary to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HK_HOST }}
+          port: ${{ secrets.HK_PORT }}
+          username: ${{ secrets.HK_USER }}
+          key: ${{ secrets.HK_SSH_KEY }}
+          source: "bin/mangohub"
+          target: "/home/mango/mangohub/bin"
+          strip_components: 1
+
       - name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -90,37 +118,18 @@ jobs:
           username: ${{ secrets.HK_USER }}
           key: ${{ secrets.HK_SSH_KEY }}
           script_stop: true
-          command_timeout: 30m
+          command_timeout: 10m
           script: |
-            echo "=== [1/6] Syncing code on VPS ==="
+            echo "=== [1/5] Syncing code on VPS ==="
             cd /home/mango/mangohub
             git fetch origin main
             git reset --hard origin/main
+            chmod +x /home/mango/mangohub/bin/mangohub
 
-            echo "=== [2/6] Compiling binary in container ==="
-            mkdir -p /home/mango/mangohub/bin
-            # 注入构建 hash：/api/version 与启动日志可定位线上对应的 commit。
-            BUILD_SHA=$(git -C /home/mango/mangohub rev-parse --short=7 HEAD)
-            echo "Building commit $BUILD_SHA"
-            # This VPS has 891MB RAM and runs the production hub. An unbounded
-            # go build (default GOMAXPROCS, parallel compile of CGO/sqlite) pushes
-            # the whole box into swap thrash and can stall the hub for minutes.
-            # Cap the build container's resident set: 350m RSS keeps the box
-            # responsive, 1g swap lets the CGO compile survive (350m alone OOM-kills
-            # cc1 inside sqlite) — a one-shot CI build can afford to be slow.
-            sudo docker run --rm \
-              --memory 350m --memory-swap 1g \
-              -e GOMAXPROCS=1 \
-              -v /home/mango/mangohub:/src \
-              -w /src/hub \
-              -e CGO_ENABLED=1 \
-              golang:alpine \
-              sh -c "apk add --no-cache gcc musl-dev && go build -p 1 -ldflags '-s -w -linkmode external -extldflags \"-static\" -X github.com/dengyie/mangohub/hub/utils.VersionHash=$BUILD_SHA' -trimpath -o /src/bin/mangohub ."
-
-            echo "=== [3/6] Building production docker image ==="
+            echo "=== [2/5] Building production docker image ==="
             sudo docker build -t mangohub:latest -f Dockerfile .
 
-            echo "=== [4/6] Rolling update container ==="
+            echo "=== [3/5] Rolling update container ==="
             # Trust exactly the docker gateway so the auth-fail limiter keys
             # buckets on the real client IP (CF-Connecting-IP / X-Real-IP from
             # nginx). Without this every external request collapses into one
@@ -153,7 +162,7 @@ jobs:
             sudo docker rm komari || true
             run_hub mangohub:latest
 
-            echo "=== [5/6] Self-health check ==="
+            echo "=== [4/5] Self-health check ==="
             healthy=false
             for i in $(seq 1 30); do
               sleep 1
@@ -179,4 +188,4 @@ jobs:
               exit 1
             fi
 
-            echo "=== [6/6] Deployment completed successfully! ==="
+            echo "=== [5/5] Deployment completed successfully! ==="
