@@ -21,6 +21,11 @@ jobs:
           go-version: '1.24'
           cache-dependency-path: agent/go.sum
 
+      - name: Check gofmt on Agent
+        run: |
+          cd agent
+          test -z "$(gofmt -l .)" || { echo "gofmt violations:"; gofmt -l .; exit 1; }
+
       - name: Run go vet on Agent
         run: |
           cd agent
@@ -60,6 +65,11 @@ jobs:
         with:
           go-version: '1.25'
           cache-dependency-path: hub/go.sum
+
+      - name: Check gofmt on Hub
+        run: |
+          cd hub
+          test -z "$(gofmt -l .)" || { echo "gofmt violations:"; gofmt -l .; exit 1; }
 
       - name: Run go vet on Hub
         run: |

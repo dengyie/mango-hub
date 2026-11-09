@@ -20,7 +20,7 @@ func StorageSize() (int64, error) {
 	if !flags.IsSQLite() {
 		return 0, errors.New("main database size is only available for SQLite")
 	}
-	return sqliteFileSetSize(resolveDatabaseFile())
+	return sqliteFileSetSize(ResolveDatabaseFile())
 }
 
 // ReclaimSpace checkpoints the main database WAL and rewrites the SQLite file.

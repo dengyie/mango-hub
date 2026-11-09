@@ -211,10 +211,6 @@ func ResolveDatabaseFile() string {
 	return resolveDatabaseFileWithPaths(flags.DatabaseFile, "./data/mangohub.db", "./data/komari.db")
 }
 
-func resolveDatabaseFile() string {
-	return ResolveDatabaseFile()
-}
-
 func resolveDatabaseFileWithPaths(dbFile, mangoPath, komariPath string) string {
 	if dbFile == "" || dbFile == "./data/mangohub.db" || dbFile == "./data/komari.db" {
 		mangoStat, mangoErr := os.Stat(mangoPath)
@@ -366,7 +362,7 @@ func writeVersionMarker() {
 
 func buildSQLiteDSN(databaseFile string) string {
 	if databaseFile == "" {
-		databaseFile = resolveDatabaseFile()
+		databaseFile = ResolveDatabaseFile()
 	}
 
 	params := fmt.Sprintf("_busy_timeout=%d&_txlock=immediate", mainSQLiteBusyTimeout.Milliseconds())
@@ -488,7 +484,7 @@ func doInitialize() error {
 	}()
 
 	// 统一解析并回填实际使用的 SQLite 数据库文件路径（自动发现并平滑接管存量 ./data/komari.db）
-	actualDBFile := resolveDatabaseFile()
+	actualDBFile := ResolveDatabaseFile()
 	flags.DatabaseFile = actualDBFile
 
 	// 记录“打开数据库之前”数据库是否已存在，用于区分全新安装与旧版升级。

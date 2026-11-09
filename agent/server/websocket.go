@@ -510,20 +510,20 @@ func processV2Event(conn *ws.SafeConn, method string, params interface{}, eventI
 		} else {
 			log.Printf("bad v2 file params: %v", err)
 		}
-		case v2.MethodAgentSSHAuthorize:
-			var p v2.SSHAuthorizeParams
-			if err := v2.BindParams(params, &p); err == nil {
-				go func() {
-					err := sshauth.AuthorizeKey(p.TicketID, p.PublicKey, p.TargetUser, p.ExpiresAt)
-					if err != nil {
-						log.Printf("[sshauth] Failed to authorize ticket %s: %v", p.TicketID, err)
-					}
-					reportSSHTicketResult(conn, p.TicketID, err == nil, err)
-				}()
-				return true
-			} else {
-				log.Printf("bad v2 ssh authorize params: %v", err)
-			}
+	case v2.MethodAgentSSHAuthorize:
+		var p v2.SSHAuthorizeParams
+		if err := v2.BindParams(params, &p); err == nil {
+			go func() {
+				err := sshauth.AuthorizeKey(p.TicketID, p.PublicKey, p.TargetUser, p.ExpiresAt)
+				if err != nil {
+					log.Printf("[sshauth] Failed to authorize ticket %s: %v", p.TicketID, err)
+				}
+				reportSSHTicketResult(conn, p.TicketID, err == nil, err)
+			}()
+			return true
+		} else {
+			log.Printf("bad v2 ssh authorize params: %v", err)
+		}
 	case v2.MethodAgentSSHRevoke:
 		var p v2.SSHRevokeParams
 		if err := v2.BindParams(params, &p); err == nil {
@@ -536,36 +536,36 @@ func processV2Event(conn *ws.SafeConn, method string, params interface{}, eventI
 		} else {
 			log.Printf("bad v2 ssh revoke params: %v", err)
 		}
-		default:
-			log.Printf("unknown v2 event method %s", method)
-		}
-		return false
+	default:
+		log.Printf("unknown v2 event method %s", method)
 	}
+	return false
+}
 
-	func reportSSHTicketResult(conn *ws.SafeConn, ticketID string, success bool, authErr error) {
-		errMsg := ""
-		if authErr != nil {
-			errMsg = authErr.Error()
-		}
-		payload := v2.Request{
-			JSONRPC: v2.Version,
-			Method:  v2.MethodAgentSSHTicketResult,
-			Params: v2.SSHTicketResultParams{
-				TicketID: ticketID,
-				Success:  success,
-				Error:    errMsg,
-			},
-		}
-		if conn == nil {
-			if err := postV2RPC(payload); err != nil {
-				log.Printf("[sshauth] Failed to report ticket result over POST: %v", err)
-			}
-			return
-		}
-		if err := conn.WriteJSONWithDeadline(payload, wsWriteTimeout); err != nil {
-			log.Printf("[sshauth] Failed to report ticket result over WebSocket: %v", err)
-		}
+func reportSSHTicketResult(conn *ws.SafeConn, ticketID string, success bool, authErr error) {
+	errMsg := ""
+	if authErr != nil {
+		errMsg = authErr.Error()
 	}
+	payload := v2.Request{
+		JSONRPC: v2.Version,
+		Method:  v2.MethodAgentSSHTicketResult,
+		Params: v2.SSHTicketResultParams{
+			TicketID: ticketID,
+			Success:  success,
+			Error:    errMsg,
+		},
+	}
+	if conn == nil {
+		if err := postV2RPC(payload); err != nil {
+			log.Printf("[sshauth] Failed to report ticket result over POST: %v", err)
+		}
+		return
+	}
+	if err := conn.WriteJSONWithDeadline(payload, wsWriteTimeout); err != nil {
+		log.Printf("[sshauth] Failed to report ticket result over WebSocket: %v", err)
+	}
+}
 
 // connectWebSocket attempts to establish a WebSocket connection and upload basic info
 

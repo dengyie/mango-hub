@@ -25,12 +25,12 @@ var ChpasswdCmd = &cobra.Command{
 			cmd.Help()
 			return
 		}
-			dbFile := dbcore.ResolveDatabaseFile()
-			flags.DatabaseFile = dbFile
-			if _, err := os.Stat(dbFile); os.IsNotExist(err) {
-				cmd.Println("Database file does not exist.")
-				return
-			}
+		dbFile := dbcore.ResolveDatabaseFile()
+		flags.DatabaseFile = dbFile
+		if _, err := os.Stat(dbFile); os.IsNotExist(err) {
+			cmd.Println("Database file does not exist.")
+			return
+		}
 		user := &models.User{}
 		dbcore.GetDBInstance().Model(&models.User{}).First(user)
 		cmd.Println("Changing password for user:", user.Username)

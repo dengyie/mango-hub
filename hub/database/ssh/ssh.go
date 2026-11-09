@@ -166,19 +166,24 @@ func ExpireStaleTickets() error {
 }
 
 // UpdateSSHTicketResult 更新 Ticket 执行状态与错误信息
-// 终态保护：只有在非 revoked、expired 终态下才允许转为 failed，避免覆盖管理员主动吊销
+// 终态保护：revoked / expired 为管理员口径的终态，任何迟到的 agent ACK 都不允许覆盖；
+// 失败 ACK 在非终态下置为 failed；成功 ACK 清空错误并把 failed 恢复为 active（密钥实际已注入）。
 func UpdateSSHTicketResult(ticketID string, success bool, errMsg string) error {
-	if !success {
-		return dbcore.GetDBInstance().Model(&models.SSHTicket{}).
-			Where("ticket_id = ? AND status NOT IN ('revoked', 'expired')", ticketID).
-			Updates(map[string]interface{}{
-				"status":        "failed",
-				"error_message": errMsg,
-			}).Error
+	status := "failed"
+	updates := map[string]interface{}{
+		"status":        status,
+		"error_message": errMsg,
+	}
+	if success {
+		status = "active"
+		updates = map[string]interface{}{
+			"status":        status,
+			"error_message": "",
+		}
 	}
 	return dbcore.GetDBInstance().Model(&models.SSHTicket{}).
-		Where("ticket_id = ?", ticketID).
-		Update("error_message", "").Error
+		Where("ticket_id = ? AND status NOT IN ('revoked', 'expired')", ticketID).
+		Updates(updates).Error
 }
 
 // TicketFilter 定义工单查询筛选条件
@@ -230,5 +235,3 @@ func ListSSHTickets(filter TicketFilter) ([]models.SSHTicket, int64, error) {
 	}
 	return tickets, total, nil
 }
-
-

@@ -2,6 +2,7 @@ package jsonrpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/dengyie/mangohub/hub/pkg/rpc"
 	v2 "github.com/dengyie/mangohub/hub/protocol/v2"
 	agent_runtime "github.com/dengyie/mangohub/hub/web/agent"
+	"gorm.io/gorm"
 )
 
 // admin.ssh.go
@@ -94,51 +96,51 @@ func init() {
 		Returns: "{ ticket: SSHTicket, private_key: string, target_info: object }",
 	})
 
-		// 吊销互访 Ticket
-		RegisterWithGroupAndMeta("revokeSSHTicket", rpc.RoleClient, clientRevokeSSHTicket, &rpc.MethodMeta{
-			Name:        "client:revokeSSHTicket",
-			Summary:     "Revoke an active SSH access ticket",
-			Description: "Revoke ticket and remove public key on target client immediately",
-			Params: []rpc.ParamMeta{
-				{Name: "ticket_id", Type: "string", Description: "Ticket ID to revoke"},
-			},
-			Returns: "{ success: boolean }",
-		})
-		RegisterWithGroupAndMeta("revokeSSHTicket", rpc.RoleAdmin, clientRevokeSSHTicket, &rpc.MethodMeta{
-			Name:        "admin:revokeSSHTicket",
-			Summary:     "Revoke an active SSH access ticket by Admin",
-			Description: "Admin revoke ticket and remove public key on target client immediately",
-			Params: []rpc.ParamMeta{
-				{Name: "ticket_id", Type: "string", Description: "Ticket ID to revoke"},
-			},
-			Returns: "{ success: boolean }",
-		})
+	// 吊销互访 Ticket
+	RegisterWithGroupAndMeta("revokeSSHTicket", rpc.RoleClient, clientRevokeSSHTicket, &rpc.MethodMeta{
+		Name:        "client:revokeSSHTicket",
+		Summary:     "Revoke an active SSH access ticket",
+		Description: "Revoke ticket and remove public key on target client immediately",
+		Params: []rpc.ParamMeta{
+			{Name: "ticket_id", Type: "string", Description: "Ticket ID to revoke"},
+		},
+		Returns: "{ success: boolean }",
+	})
+	RegisterWithGroupAndMeta("revokeSSHTicket", rpc.RoleAdmin, clientRevokeSSHTicket, &rpc.MethodMeta{
+		Name:        "admin:revokeSSHTicket",
+		Summary:     "Revoke an active SSH access ticket by Admin",
+		Description: "Admin revoke ticket and remove public key on target client immediately",
+		Params: []rpc.ParamMeta{
+			{Name: "ticket_id", Type: "string", Description: "Ticket ID to revoke"},
+		},
+		Returns: "{ success: boolean }",
+	})
 
-		// 管理员查询与审计 SSH 工单列表
-		RegisterWithGroupAndMeta("listSSHTickets", rpc.RoleAdmin, adminListSSHTickets, &rpc.MethodMeta{
-			Name:        "admin:listSSHTickets",
-			Summary:     "List SSH access tickets with filter and pagination",
-			Description: "Admin query and audit all issued SSH access tickets",
-			Params: []rpc.ParamMeta{
-				{Name: "status", Type: "string", Description: "Filter by status: active, revoked, expired, failed"},
-				{Name: "target_client", Type: "string", Description: "Filter by target client UUID"},
-				{Name: "source_client", Type: "string", Description: "Filter by source client UUID"},
-				{Name: "limit", Type: "number", Description: "Page size (default 50, max 200)"},
-				{Name: "offset", Type: "number", Description: "Offset (default 0)"},
-			},
-			Returns: "{ tickets: SSHTicket[], total: number }",
-		})
+	// 管理员查询与审计 SSH 工单列表
+	RegisterWithGroupAndMeta("listSSHTickets", rpc.RoleAdmin, adminListSSHTickets, &rpc.MethodMeta{
+		Name:        "admin:listSSHTickets",
+		Summary:     "List SSH access tickets with filter and pagination",
+		Description: "Admin query and audit all issued SSH access tickets",
+		Params: []rpc.ParamMeta{
+			{Name: "status", Type: "string", Description: "Filter by status: active, revoked, expired, failed"},
+			{Name: "target_client", Type: "string", Description: "Filter by target client UUID"},
+			{Name: "source_client", Type: "string", Description: "Filter by source client UUID"},
+			{Name: "limit", Type: "number", Description: "Page size (default 50, max 200)"},
+			{Name: "offset", Type: "number", Description: "Offset (default 0)"},
+		},
+		Returns: "{ tickets: SSHTicket[], total: number }",
+	})
 
-		// 管理员查询单个 SSH 工单详情
-		RegisterWithGroupAndMeta("getSSHTicket", rpc.RoleAdmin, adminGetSSHTicket, &rpc.MethodMeta{
-			Name:        "admin:getSSHTicket",
-			Summary:     "Get detailed info of a specific SSH access ticket",
-			Description: "Admin get details and execution error message for a ticket",
-			Params: []rpc.ParamMeta{
-				{Name: "ticket_id", Type: "string", Description: "Ticket ID to query"},
-			},
-			Returns: "{ ticket: SSHTicket }",
-		})
+	// 管理员查询单个 SSH 工单详情
+	RegisterWithGroupAndMeta("getSSHTicket", rpc.RoleAdmin, adminGetSSHTicket, &rpc.MethodMeta{
+		Name:        "admin:getSSHTicket",
+		Summary:     "Get detailed info of a specific SSH access ticket",
+		Description: "Admin get details and execution error message for a ticket",
+		Params: []rpc.ParamMeta{
+			{Name: "ticket_id", Type: "string", Description: "Ticket ID to query"},
+		},
+		Returns: "{ ticket: SSHTicket }",
+	})
 }
 
 func adminListSSHKeys(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
@@ -255,7 +257,10 @@ func adminGetSSHTicket(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.Js
 	}
 	ticket, err := ssh.GetSSHTicketByID(params.TicketID)
 	if err != nil {
-		return nil, rpc.MakeError(rpc.InvalidParams, "Ticket not found: "+err.Error(), nil)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, rpc.MakeError(rpc.InvalidParams, "Ticket not found", nil)
+		}
+		return nil, rpc.MakeError(rpc.InternalError, "Failed to get SSH ticket", nil)
 	}
 	return map[string]any{"ticket": ticket}, nil
 }
@@ -328,10 +333,6 @@ func clientRequestSSHTicket(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 		}
 	}
 
-	// 过期工单状态翻转（best-effort）：agent 侧租约定时器只负责剪钥，
-	// DB 口径在这里收敛，避免过期工单永久停留 active。
-	_ = ssh.ExpireStaleTickets()
-
 	if targetClientUUID == "" {
 		return nil, rpc.MakeError(rpc.InvalidParams, "target_client_uuid is required", nil)
 	}
@@ -397,26 +398,26 @@ func clientRequestSSHTicket(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 		targetPort = params.TargetPort
 	}
 
-		// 若未显式传入，支持从节点 Tags 中健壮解析自定义端口或主机，如 "ssh_port: 2222; ssh_host: 10.144.144.81"
-		if targetClient.Tags != "" {
-			for _, tag := range strings.Split(targetClient.Tags, ";") {
-				parts := strings.SplitN(tag, ":", 2)
-				if len(parts) != 2 {
-					continue
+	// 若未显式传入，支持从节点 Tags 中健壮解析自定义端口或主机，如 "ssh_port: 2222; ssh_host: 10.144.144.81"
+	if targetClient.Tags != "" {
+		for _, tag := range strings.Split(targetClient.Tags, ";") {
+			parts := strings.SplitN(tag, ":", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			key := strings.ToLower(strings.TrimSpace(parts[0]))
+			val := strings.TrimSpace(parts[1])
+			if params.TargetPort <= 0 && key == "ssh_port" {
+				if p, err := strconv.Atoi(val); err == nil && p > 0 {
+					targetPort = p
 				}
-				key := strings.ToLower(strings.TrimSpace(parts[0]))
-				val := strings.TrimSpace(parts[1])
-				if params.TargetPort <= 0 && key == "ssh_port" {
-					if p, err := strconv.Atoi(val); err == nil && p > 0 {
-						targetPort = p
-					}
-				} else if params.TargetHost == "" && key == "ssh_host" {
-					if val != "" {
-						targetHost = val
-					}
+			} else if params.TargetHost == "" && key == "ssh_host" {
+				if val != "" {
+					targetHost = val
 				}
 			}
 		}
+	}
 
 	if targetHost == "" {
 		if targetClient.IPv6 != "" {
@@ -534,17 +535,22 @@ func formatSSHCommand(port int, user, host string) string {
 // 1. 如果调用方显式传递了 targetUser，直接采纳；
 // 2. 如果目标节点 Tags 显式配置了 "ssh_user:<user>"（大小写不敏感），优先采纳；
 // 3. 否则根据操作系统及云厂商环境智能推导：
-//    - Windows: 返回 "Administrator"（输出标准格式的明确连接指令）
-//    - macOS / Darwin: AWS 上为 "ec2-user"，常规为 "admin"（macOS 默认禁用 root ssh）
-//    - FreeBSD / OpenBSD: AWS 上为 "ec2-user"，常规为 "freebsd"
-//    - Azure Linux: "azureuser"
-//    - Oracle Cloud (OCI): "opc"
-//    - Ubuntu: "ubuntu"
-//    - Debian: 若节点名/Tags 表明为 AWS Lightsail/AWS 则为 "admin"，否则 "root"
-//    - CentOS / Rocky / AlmaLinux / RHEL / Fedora: 若 AWS EC2 则为 "ec2-user"，否则 "root"
-//    - Amazon Linux: "ec2-user"
-//    - Arch / Alpine: "root"
-//    - 通用回退兜底: "root"
+//   - Windows: 返回 "Administrator"（输出标准格式的明确连接指令）
+//   - macOS / Darwin: AWS 上为 "ec2-user"，常规为 "admin"（macOS 默认禁用 root ssh）
+//   - FreeBSD / OpenBSD: AWS 上为 "ec2-user"，常规为 "freebsd"
+//   - Azure 节点: "azureuser"（厂商规则在发行版之前，Azure 镜像默认账户与发行版无关）
+//   - Oracle Cloud (OCI) 节点: "opc"（同上）
+//   - Ubuntu: "ubuntu"
+//   - Debian: 若节点名/Tags 表明为 AWS Lightsail/AWS 则为 "admin"，否则 "root"
+//   - CentOS / Rocky / AlmaLinux / RHEL / Fedora: 若 AWS EC2 则为 "ec2-user"，否则 "root"
+//   - Amazon Linux: "ec2-user"
+//   - Arch / Alpine: "root"
+//   - Azure 节点: "azureuser"（仅在明确 OS 规则未命中时兜底，词级匹配避免误判）
+//   - Oracle Cloud (OCI) 节点: "opc"（同上）
+//   - 通用回退兜底: "root"
+//
+// 云厂商判定用分词级匹配（按非字母数字切分）而非子串包含，
+// 避免 "social" 命中 "oci" 之类误判；Azure/OCI 固定账户规则保持在发行版规则之前。
 func resolveTargetUser(client *models.Client, explicitUser string) string {
 	if explicitUser != "" {
 		return strings.TrimSpace(explicitUser)
@@ -568,16 +574,27 @@ func resolveTargetUser(client *models.Client, explicitUser string) string {
 		}
 	}
 
-	// 2. 基于 OS 及云特征推导
-	osLower := strings.ToLower(client.OS)
-	nameLower := strings.ToLower(client.Name)
-	tagsLower := strings.ToLower(client.Tags)
+	// 2. 基于 OS 及云特征推导。
+	// matchesWord 报告 s 的小写分词（按非字母数字切分）是否等于词 word，
+	// 用于云厂商关键词匹配，防止子串误判（如 "social" 含 "oci"）。
+	matchesWord := func(s, word string) bool {
+		for _, f := range strings.FieldsFunc(strings.ToLower(s), func(r rune) bool {
+			return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
+		}) {
+			if f == word {
+				return true
+			}
+		}
+		return false
+	}
 
-	isAWS := strings.Contains(nameLower, "aws") || strings.Contains(tagsLower, "aws")
-	isLightsail := strings.Contains(nameLower, "lightsail") || strings.Contains(tagsLower, "lightsail")
-	isAzure := strings.Contains(nameLower, "azure") || strings.Contains(tagsLower, "azure")
-	isOCI := strings.Contains(nameLower, "oci") || strings.Contains(tagsLower, "oci") ||
-		strings.Contains(nameLower, "oracle") || strings.Contains(tagsLower, "oracle")
+	osLower := strings.ToLower(client.OS)
+	isAWS := matchesWord(client.Name, "aws") || matchesWord(client.Tags, "aws") ||
+		matchesWord(client.Name, "ec2") || matchesWord(client.Tags, "ec2")
+	isLightsail := matchesWord(client.Name, "lightsail") || matchesWord(client.Tags, "lightsail")
+	isAzure := matchesWord(client.Name, "azure") || matchesWord(client.Tags, "azure")
+	isOCI := matchesWord(client.Name, "oci") || matchesWord(client.Tags, "oci") ||
+		matchesWord(client.Name, "oracle") || matchesWord(client.Tags, "oracle")
 
 	if strings.Contains(osLower, "windows") {
 		return "Administrator"
@@ -594,6 +611,8 @@ func resolveTargetUser(client *models.Client, explicitUser string) string {
 		}
 		return "freebsd"
 	}
+	// 云厂商默认账户在发行版规则之前：Azure/OCI 的镜像无论 Ubuntu/Debian/CentOS，
+	// 默认登录账户均为厂商固定值（azureuser/opc），发行版推导反而会给错。
 	if isAzure {
 		return "azureuser"
 	}
@@ -623,6 +642,5 @@ func resolveTargetUser(client *models.Client, explicitUser string) string {
 	if strings.Contains(osLower, "arch") || strings.Contains(osLower, "alpine") {
 		return "root"
 	}
-
 	return "root"
 }

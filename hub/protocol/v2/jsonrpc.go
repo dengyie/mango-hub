@@ -6,24 +6,24 @@ import (
 )
 
 const (
-	Version                  = "2.0"
-	MethodAgentReport        = "agent.report"
-	MethodAgentBasicInfo     = "agent.basicInfo"
-	MethodAgentPingResult    = "agent.pingResult"
-	MethodAgentTaskResult    = "agent.taskResult"
-	MethodAgentExec          = "agent.exec"
-	MethodAgentMiningControl = "agent.mining.control"
-	MethodAgentPing          = "agent.ping"
-	MethodAgentMessage       = "agent.message"
-	MethodAgentEvent         = "agent.event"
-	MethodAgentTerminal      = "agent.terminal.request"
-	MethodAgentPull          = "agent.pull"
-	MethodAgentFile          = "agent.file"
-	MethodAgentFileResult    = "agent.file.result"
-		MethodAgentSSHAuthorize    = "agent.ssh.authorize"
-		MethodAgentSSHRevoke       = "agent.ssh.revoke"
-		MethodAgentSSHTicketResult = "agent.ssh.ticketResult"
-	)
+	Version                    = "2.0"
+	MethodAgentReport          = "agent.report"
+	MethodAgentBasicInfo       = "agent.basicInfo"
+	MethodAgentPingResult      = "agent.pingResult"
+	MethodAgentTaskResult      = "agent.taskResult"
+	MethodAgentExec            = "agent.exec"
+	MethodAgentMiningControl   = "agent.mining.control"
+	MethodAgentPing            = "agent.ping"
+	MethodAgentMessage         = "agent.message"
+	MethodAgentEvent           = "agent.event"
+	MethodAgentTerminal        = "agent.terminal.request"
+	MethodAgentPull            = "agent.pull"
+	MethodAgentFile            = "agent.file"
+	MethodAgentFileResult      = "agent.file.result"
+	MethodAgentSSHAuthorize    = "agent.ssh.authorize"
+	MethodAgentSSHRevoke       = "agent.ssh.revoke"
+	MethodAgentSSHTicketResult = "agent.ssh.ticketResult"
+)
 
 type SSHAuthorizeParams struct {
 	TicketID   string    `json:"ticket_id"`
