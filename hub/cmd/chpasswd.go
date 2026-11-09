@@ -25,16 +25,12 @@ var ChpasswdCmd = &cobra.Command{
 			cmd.Help()
 			return
 		}
-		dbFile := flags.DatabaseFile
-		if _, err := os.Stat(dbFile); os.IsNotExist(err) {
-			if _, errLegacy := os.Stat("./data/komari.db"); errLegacy == nil {
-				dbFile = "./data/komari.db"
-				flags.DatabaseFile = dbFile
-			} else {
+			dbFile := dbcore.ResolveDatabaseFile()
+			flags.DatabaseFile = dbFile
+			if _, err := os.Stat(dbFile); os.IsNotExist(err) {
 				cmd.Println("Database file does not exist.")
 				return
 			}
-		}
 		user := &models.User{}
 		dbcore.GetDBInstance().Model(&models.User{}).First(user)
 		cmd.Println("Changing password for user:", user.Username)

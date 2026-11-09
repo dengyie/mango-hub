@@ -205,18 +205,39 @@ func SetVersionID(id string) {
 	versionID = id
 }
 
-// resolveDatabaseFile 返回当前使用的 SQLite 数据库文件路径。
-// 优先使用 ./data/mangohub.db；若存在旧版 ./data/komari.db 且 mangohub.db 尚未建立，则自动平滑兼容。
+// ResolveDatabaseFile 返回当前使用的 SQLite 数据库文件路径。
+// 优先使用 ./data/mangohub.db；若存在旧版 ./data/komari.db 且 mangohub.db 尚未建立（或为 0 字节空文件），则自动平滑兼容。
+func ResolveDatabaseFile() string {
+	return resolveDatabaseFileWithPaths(flags.DatabaseFile, "./data/mangohub.db", "./data/komari.db")
+}
+
 func resolveDatabaseFile() string {
-	dbFile := flags.DatabaseFile
+	return ResolveDatabaseFile()
+}
+
+func resolveDatabaseFileWithPaths(dbFile, mangoPath, komariPath string) string {
 	if dbFile == "" || dbFile == "./data/mangohub.db" || dbFile == "./data/komari.db" {
-		if _, err := os.Stat("./data/mangohub.db"); err == nil {
-			return "./data/mangohub.db"
+		mangoStat, mangoErr := os.Stat(mangoPath)
+		komariStat, komariErr := os.Stat(komariPath)
+
+		// 1. 若 mangohub.db 存在且非空（已有实际业务数据），优先使用
+		if mangoErr == nil && mangoStat.Size() > 0 {
+			return mangoPath
 		}
-		if _, err := os.Stat("./data/komari.db"); err == nil {
-			return "./data/komari.db"
+		// 2. 若存量 komari.db 存在且非空，使用 komari.db 保持向后平滑兼容
+		if komariErr == nil && komariStat.Size() > 0 {
+			return komariPath
 		}
-		return "./data/mangohub.db"
+		// 3. 若 mangohub.db 存在（即使刚被创建），且 komari.db 不存在，使用 mangohub.db
+		if mangoErr == nil {
+			return mangoPath
+		}
+		// 4. 若 komari.db 存在，使用 komari.db
+		if komariErr == nil {
+			return komariPath
+		}
+		// 5. 缺省全新安装
+		return mangoPath
 	}
 	return dbFile
 }
