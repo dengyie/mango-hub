@@ -23,6 +23,10 @@ import (
 
 func init() {
 	reg("miningControl", adminMiningControl, "Start or stop mining on clients (requires agent AGENT_MINER_CONTROL_CMD)")
+	// 挖矿启停会远控子节点跑矿工进程，与 admin:exec 同级敏感：除 admin 角色外
+	// 还需敏感操作二次验证（API Key principal 在 VerifySensitive2FACore 豁免，
+	// 脚本化用法不受影响）。
+	rpc.MarkSensitive("admin:miningControl")
 }
 
 // partitionTargets 将目标节点按「在线可即时下发 / 在线排队补发 / 离线」分区。
@@ -142,8 +146,13 @@ func adminMiningControl(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc
 		tasks.SaveTaskResult(taskId, uuid, "Dispatch failed: client connection broke during send", -1, now)
 	}
 	for _, uuid := range queued {
-		agent_runtime.DispatchV2Event(uuid, v2.MethodAgentMiningControl,
-			v2.MiningControlParams{TaskID: taskId, Action: params.Action})
+		// DispatchV2Event 三态：直发成功 / 入队成功 / 整体 false（非 v2 agent 或写失败
+		// 且不可排队）。false 时任务永远等不到回传，必须立即落 -1 终态，否则任务行
+		// 永远停在 NULL exit_code（P2 收口，配合过期对账兜底）。
+		if !agent_runtime.DispatchV2Event(uuid, v2.MethodAgentMiningControl,
+			v2.MiningControlParams{TaskID: taskId, Action: params.Action}) {
+			tasks.SaveTaskResult(taskId, uuid, "Dispatch failed: agent is not a v2 client", -1, now)
+		}
 	}
 	for _, uuid := range offline {
 		tasks.SaveTaskResult(taskId, uuid, "Client offline!", -1, now)

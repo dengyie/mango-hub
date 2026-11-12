@@ -119,7 +119,18 @@ func publicGetClientRecentRecords(ctx context.Context, req *rpc.JsonRpcRequest) 
 	if !isLoginFromCtx(ctx) && isHiddenClient(params.UUID) {
 		return nil, rpc.MakeError(rpc.InvalidParams, "UUID is required", nil) // 防止未登录获取隐藏客户端
 	}
-	return agent_runtime.GetRecentReports(params.UUID), nil
+	reports := agent_runtime.GetRecentReports(params.UUID)
+	// 游客可见性收敛（P1）：最近状态缓存是原始 v2.Report，含 mining（钱包/矿池）、gpu、disk_io。
+	// 其余三个游客出口（getNodes/getNodesInformation/getRecordsByUUID/queryMetrics）均已收敛，
+	// 此处同步剥离；登录用户（含 2FA/API Key）保持全量。字段为值拷贝，修改不影响共享缓存。
+	if !isLoginFromCtx(ctx) {
+		for i := range reports {
+			reports[i].Mining = nil
+			reports[i].GPU = nil
+			reports[i].DiskIO = nil
+		}
+	}
+	return reports, nil
 }
 
 // isHiddenClient 查询指定 uuid 是否为隐藏节点（O(1) 内存快照，无 SQLite 读开销）。
@@ -220,7 +231,8 @@ func publicGetRecordsByUUID(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 
 // maskWalletAddr 掩码钱包地址（rig tag = wallet/worker）：保留前 4 后 2，
 // 中段打星；worker 名（"/" 之后）是机器标识不是资金信息，保留以维持可读性。
-// 例：krxXGNKMD4/home-win → krxX***D4/home-win。空串与已掩码值原样返回。
+// 例：krxXGNKMD4/home-win → krxX***D4/home-win。空串与已掩码值原样返回；
+// ≤6 字符的短地址无法保留前 4 后 2（会全暴露），直接整串打星。
 func maskWalletAddr(w string) string {
 	slash := strings.IndexByte(w, '/')
 	worker := ""
@@ -229,8 +241,11 @@ func maskWalletAddr(w string) string {
 		worker = w[slash:]
 		addr = w[:slash]
 	}
-	if len(addr) <= 6 {
+	if addr == "" {
 		return w
+	}
+	if len(addr) <= 6 {
+		return "***" + worker
 	}
 	return addr[:4] + "***" + addr[len(addr)-2:] + worker
 }

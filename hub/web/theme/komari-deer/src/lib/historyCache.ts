@@ -29,7 +29,6 @@ export type MiningRecord = {
   temperature: number; // °C
   fan: number;        // %
   shares_valid: number;
-  shares_stale: number;
   shares_invalid: number;
   hw_errors: number;
   pool_latency: number; // ms

@@ -951,7 +951,6 @@
     "hashrate": "Hashrate",
     "shares": "Shares",
     "shares_valid": "Valid",
-    "shares_stale": "Stale",
     "shares_invalid": "Invalid"
   },
   "earnings": {

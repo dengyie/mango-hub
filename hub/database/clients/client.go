@@ -170,10 +170,9 @@ func SaveClientInfo(update map[string]interface{}) error {
 	if err := verify(update); err != nil {
 		return err
 	}
-	if err := normalizeMinerFlags(update); err != nil {
-		return err
-	}
 
+	// normalizeMinerFlags 由 applyClientInfoUpdate 内部统一调用（全部写路径
+	// 都经过它），外层不再重复。
 	return applyClientInfoUpdate(db, clientUUID, update)
 }
 

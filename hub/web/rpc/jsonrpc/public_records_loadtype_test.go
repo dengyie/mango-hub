@@ -183,9 +183,10 @@ func TestMaskWalletAddr(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"krxXGNKMD4/home-win", "krxX***D4/home-win"},
 		{"0x1234567890abcdef", "0x12***ef"},
-		{"short1", "short1"}, // <=6 原样
-		{"", ""},             // 空串
-		{"ab/cd", "ab/cd"},   // 地址部分太短
+		{"short1", "***"},         // <=6 无法保留前4后2，地址整串打星
+		{"", ""},                  // 空串
+		{"ab/cd", "***/cd"},       // 地址部分太短：地址打星，worker 非资金信息保留
+		{"ab/cd/ef", "***/cd/ef"}, // 多段：只切第一个 "/"，其余并入 worker
 		{"XEN9999999999", "XEN9***99"},
 	}
 	for _, c := range cases {

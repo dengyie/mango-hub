@@ -31,7 +31,6 @@ const (
 	MetricMiningTemp          = "mining.temperature"
 	MetricMiningFan           = "mining.fan"
 	MetricMiningSharesValid   = "mining.shares.valid"
-	MetricMiningSharesStale   = "mining.shares.stale"
 	MetricMiningSharesInvalid = "mining.shares.invalid"
 	MetricMiningHwErrors      = "mining.hw_errors"
 	MetricMiningPoolLatency   = "mining.pool_latency"
@@ -67,7 +66,7 @@ var diskIOMetricNames = []string{
 // shares/...), stored as tagged points like GPU device metrics.
 var miningMetricNames = []string{
 	MetricMiningHashrate, MetricMiningPower, MetricMiningTemp, MetricMiningFan,
-	MetricMiningSharesValid, MetricMiningSharesStale, MetricMiningSharesInvalid,
+	MetricMiningSharesValid, MetricMiningSharesInvalid,
 	MetricMiningHwErrors, MetricMiningPoolLatency,
 }
 

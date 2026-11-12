@@ -90,24 +90,30 @@ var (
 	lastMinerStat   *MinerStat
 	lastMinerFetch  time.Time
 	minerFetchFails int
+	// minerCollectorOnce 保证采集 goroutine 只启动一次：重复调用（如配置
+	// 重载路径误触发）会叠加 ticker 造成并发写共享快照与请求翻倍。
+	minerCollectorOnce sync.Once
 )
 
 // StartMinerCollector 在后台轮询 SRBMiner API 并维护最新快照。url 为空时不启动（无上报）。
-// 应在 agent 初始化阶段调用一次；goroutine 随进程常驻，进程退出即回收（无需显式 stop）。
+// 应在 agent 初始化阶段调用；幂等（sync.Once），重复调用只生效首次，避免叠加轮询 goroutine。
+// goroutine 随进程常驻，进程退出即回收（无需显式 stop）。
 func StartMinerCollector(url string) {
 	url = strings.TrimSpace(url)
 	if url == "" {
 		return
 	}
-	go func() {
-		log.Printf("[miner] collector started, polling %s every %s", url, minerCollectionInterval)
-		collectMinerOnce(url) // 立即拉一次，避免首个周期在上报前无数据
-		ticker := time.NewTicker(minerCollectionInterval)
-		defer ticker.Stop()
-		for range ticker.C {
-			collectMinerOnce(url)
-		}
-	}()
+	minerCollectorOnce.Do(func() {
+		go func() {
+			log.Printf("[miner] collector started, polling %s every %s", url, minerCollectionInterval)
+			collectMinerOnce(url) // 立即拉一次，避免首个周期在上报前无数据
+			ticker := time.NewTicker(minerCollectionInterval)
+			defer ticker.Stop()
+			for range ticker.C {
+				collectMinerOnce(url)
+			}
+		}()
+	})
 }
 
 // collectMinerOnce 拉取一次最新状态并写入共享缓存。失败仅更新失败计数并打日志（限流），

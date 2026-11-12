@@ -337,7 +337,6 @@ type MiningRecord struct {
 	Temperature   float64   `json:"temperature"`
 	Fan           float64   `json:"fan"`
 	SharesValid   int64     `json:"shares_valid"`
-	SharesStale   int64     `json:"shares_stale"`
 	SharesInvalid int64     `json:"shares_invalid"`
 	HwErrors      int64     `json:"hw_errors"`
 	PoolLatency   int64     `json:"pool_latency"`
@@ -402,8 +401,6 @@ func GetMiningRecordsByClientAndTime(ctx context.Context, clientUUID string, sta
 				rec.Fan = p.Value
 			case MetricMiningSharesValid:
 				rec.SharesValid = int64(p.Value)
-			case MetricMiningSharesStale:
-				rec.SharesStale = int64(p.Value)
 			case MetricMiningSharesInvalid:
 				rec.SharesInvalid = int64(p.Value)
 			case MetricMiningHwErrors:

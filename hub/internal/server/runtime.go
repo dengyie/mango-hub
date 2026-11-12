@@ -223,10 +223,19 @@ func registerScheduledWork() {
 
 const taskResultRetentionDays = 30
 
+// taskStaleNullGrace 是 NULL exit_code 任务行的对账宽限期：略大于排队事件
+// TTL（5min），确保 agent 重连取队走完正常回传路径后再兜底收敛。
+const taskStaleNullGrace = 10 * time.Minute
+
 func cleanupScheduledData() {
 	before := time.Now().UTC().Add(-24 * time.Hour * taskResultRetentionDays)
 	if err := tasks.ClearTaskResultsByTimeBefore(before); err != nil {
 		logger.Errorf("server", "Failed to clean expired task results: %v", err)
+	}
+	if finalized, err := tasks.FinalizeStaleNullResults(taskStaleNullGrace, before); err != nil {
+		logger.Errorf("server", "Failed to finalize stale null task results: %v", err)
+	} else if finalized > 0 {
+		logger.Infof("server", "Finalized %d stale task results without agent response", finalized)
 	}
 	auditlog.RemoveOldLogs()
 	accounts.RemoveExpiredSessions()

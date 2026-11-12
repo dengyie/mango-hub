@@ -55,7 +55,6 @@ func reportMetricPoints(report v2.Report, trafficUp, trafficDown int64) []metric
 			metric.Point{MetricName: MetricMiningTemp, EntityID: entityID, Timestamp: ts, Value: mining.Temperature, Tags: tags},
 			metric.Point{MetricName: MetricMiningFan, EntityID: entityID, Timestamp: ts, Value: mining.FanPercent, Tags: tags},
 			metric.Point{MetricName: MetricMiningSharesValid, EntityID: entityID, Timestamp: ts, Value: float64(mining.SharesValid), Tags: tags},
-			metric.Point{MetricName: MetricMiningSharesStale, EntityID: entityID, Timestamp: ts, Value: float64(mining.SharesStale), Tags: tags},
 			metric.Point{MetricName: MetricMiningSharesInvalid, EntityID: entityID, Timestamp: ts, Value: float64(mining.SharesInvalid), Tags: tags},
 			metric.Point{MetricName: MetricMiningHwErrors, EntityID: entityID, Timestamp: ts, Value: float64(mining.HwErrors), Tags: tags},
 			metric.Point{MetricName: MetricMiningPoolLatency, EntityID: entityID, Timestamp: ts, Value: float64(mining.PoolLatency), Tags: tags},

@@ -53,7 +53,6 @@ const MiningChart = ({
         power: r.power,
         temperature: r.temperature,
         shares_valid: r.shares_valid,
-        shares_stale: r.shares_stale,
         shares_invalid: r.shares_invalid,
         hw_errors: r.hw_errors,
         pool_latency: r.pool_latency,
@@ -168,21 +167,13 @@ const MiningChart = ({
             />
           </AreaChart>
         </ChartContainer>
-        <div className="grid grid-cols-3 gap-4 text-sm text-muted-foreground mt-2">
+        <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground mt-2">
           <div className="text-center">
             <div className="font-medium">
               {t("mining.shares_valid", { defaultValue: "Valid" })}
             </div>
             <div className="text-lg font-bold text-foreground">
               {latest.shares_valid}
-            </div>
-          </div>
-          <div className="text-center">
-            <div className="font-medium">
-              {t("mining.shares_stale", { defaultValue: "Stale" })}
-            </div>
-            <div className="text-lg font-bold text-foreground">
-              {latest.shares_stale}
             </div>
           </div>
           <div className="text-center">
