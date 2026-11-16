@@ -49,7 +49,6 @@ func runTaskCommand(command string) (string, int) {
 	return runTaskCommandWithTimeout(command, 0)
 }
 
-
 // taskOutputLimit caps the combined stdout/stderr captured per command.
 const taskOutputLimit = 1 << 20 // 1 MiB
 

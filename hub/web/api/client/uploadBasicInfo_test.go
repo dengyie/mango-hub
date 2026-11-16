@@ -199,13 +199,13 @@ func TestV2BasicInfoWhitelistsAgentColumns(t *testing.T) {
 		"mem_total": int64(8 << 30),
 		"version":   "test-agent",
 		// Admin-owned / dangerous columns — must be dropped.
-		"hidden":     false,
-		"token":      "attacker-token",
-		"name":       "spoofed_name",
-		"group":      "spoofed_group",
-		"price":      0.0,
-		"weight":     0,
-		"region":     "XX",
+		"hidden":       false,
+		"token":        "attacker-token",
+		"name":         "spoofed_name",
+		"group":        "spoofed_group",
+		"price":        0.0,
+		"weight":       0,
+		"region":       "XX",
 		"not_a_column": "junk",
 	}
 
