@@ -11,8 +11,8 @@ import (
 	"github.com/dengyie/mangohub/hub/cmd/flags"
 	"github.com/dengyie/mangohub/hub/database/dbcore"
 	"github.com/dengyie/mangohub/hub/database/models"
-	v2 "github.com/dengyie/mangohub/protocol/v2"
 	agent_runtime "github.com/dengyie/mangohub/hub/web/agent"
+	v2 "github.com/dengyie/mangohub/protocol/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )

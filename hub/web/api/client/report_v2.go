@@ -15,12 +15,12 @@ import (
 	"github.com/dengyie/mangohub/hub/database/clients"
 	"github.com/dengyie/mangohub/hub/database/ssh"
 	"github.com/dengyie/mangohub/hub/database/tasks"
-	v2 "github.com/dengyie/mangohub/protocol/v2"
 	"github.com/dengyie/mangohub/hub/utils/notifier"
 	agent_runtime "github.com/dengyie/mangohub/hub/web/agent"
 	"github.com/dengyie/mangohub/hub/web/api"
 	"github.com/dengyie/mangohub/hub/web/connection"
 	"github.com/dengyie/mangohub/hub/web/filemanager"
+	v2 "github.com/dengyie/mangohub/protocol/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )

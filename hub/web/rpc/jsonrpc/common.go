@@ -15,9 +15,9 @@ import (
 	"github.com/dengyie/mangohub/hub/database/tasks"
 	"github.com/dengyie/mangohub/hub/internal/config"
 	"github.com/dengyie/mangohub/hub/pkg/rpc"
-	v2 "github.com/dengyie/mangohub/protocol/v2"
 	"github.com/dengyie/mangohub/hub/utils"
 	agent_runtime "github.com/dengyie/mangohub/hub/web/agent"
+	v2 "github.com/dengyie/mangohub/protocol/v2"
 
 	cache "github.com/patrickmn/go-cache"
 )

@@ -8,8 +8,8 @@ import (
 	"github.com/dengyie/mangohub/hub/database/models"
 	"github.com/dengyie/mangohub/hub/database/tasks"
 	"github.com/dengyie/mangohub/hub/internal/metricstore"
-	v2 "github.com/dengyie/mangohub/protocol/v2"
 	agent_runtime "github.com/dengyie/mangohub/hub/web/agent"
+	v2 "github.com/dengyie/mangohub/protocol/v2"
 )
 
 // ingest.go

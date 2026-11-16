@@ -9,8 +9,8 @@ import (
 	"github.com/dengyie/mangohub/hub/database/dbcore"
 	"github.com/dengyie/mangohub/hub/database/models"
 	"github.com/dengyie/mangohub/hub/internal/config"
-	v2 "github.com/dengyie/mangohub/protocol/v2"
 	"github.com/dengyie/mangohub/hub/utils/geoip"
+	v2 "github.com/dengyie/mangohub/protocol/v2"
 )
 
 type staticGeoIPProvider struct {

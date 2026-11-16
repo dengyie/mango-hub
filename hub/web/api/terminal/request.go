@@ -5,11 +5,11 @@ import (
 	"strings"
 
 	"github.com/dengyie/mangohub/hub/database/clients"
-	v2 "github.com/dengyie/mangohub/protocol/v2"
 	"github.com/dengyie/mangohub/hub/utils"
 	logger "github.com/dengyie/mangohub/hub/utils/log"
 	agent_runtime "github.com/dengyie/mangohub/hub/web/agent"
 	"github.com/dengyie/mangohub/hub/web/api"
+	v2 "github.com/dengyie/mangohub/protocol/v2"
 	"github.com/gin-gonic/gin"
 )
 

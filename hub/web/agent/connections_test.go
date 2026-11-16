@@ -9,8 +9,8 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	v2 "github.com/dengyie/mangohub/protocol/v2"
 	"github.com/dengyie/mangohub/hub/web/connection"
+	v2 "github.com/dengyie/mangohub/protocol/v2"
 )
 
 // newWSConnPair builds one real WebSocket connection pair and returns the

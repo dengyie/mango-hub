@@ -16,5 +16,5 @@ type TaskResult struct {
 	Result     string     `json:"result" gorm:"type:longtext"`
 	ExitCode   *int       `json:"exit_code" gorm:"type:int"`
 	FinishedAt *time.Time `json:"finished_at" gorm:"type:timestamp"`
-	CreatedAt time.Time `json:"created_at" gorm:"type:timestamp;index"`
+	CreatedAt  time.Time  `json:"created_at" gorm:"type:timestamp;index"`
 }

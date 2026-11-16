@@ -16,12 +16,12 @@ import (
 
 	"github.com/dengyie/mangohub/agent/dnsresolver"
 	"github.com/dengyie/mangohub/agent/monitoring"
-	v2 "github.com/dengyie/mangohub/protocol/v2"
 	"github.com/dengyie/mangohub/agent/reconnect"
 	"github.com/dengyie/mangohub/agent/sshauth"
 	"github.com/dengyie/mangohub/agent/terminal"
 	"github.com/dengyie/mangohub/agent/utils"
 	"github.com/dengyie/mangohub/agent/ws"
+	v2 "github.com/dengyie/mangohub/protocol/v2"
 	"github.com/gorilla/websocket"
 )
 

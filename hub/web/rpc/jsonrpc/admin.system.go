@@ -16,11 +16,11 @@ import (
 
 	"github.com/dengyie/mangohub/hub/internal/config"
 	"github.com/dengyie/mangohub/hub/pkg/rpc"
-	v2 "github.com/dengyie/mangohub/protocol/v2"
 	"github.com/dengyie/mangohub/hub/utils"
 	"github.com/dengyie/mangohub/hub/utils/geoip"
 	"github.com/dengyie/mangohub/hub/utils/messageSender"
 	agent_runtime "github.com/dengyie/mangohub/hub/web/agent"
+	v2 "github.com/dengyie/mangohub/protocol/v2"
 	"gorm.io/gorm"
 )
 
