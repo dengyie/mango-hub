@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	v2 "github.com/dengyie/mangohub/agent/protocol/v2"
+	v2 "github.com/dengyie/mangohub/protocol/v2"
 )
 
 type httpStatusError struct {

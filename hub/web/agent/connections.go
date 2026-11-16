@@ -7,7 +7,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	v2 "github.com/dengyie/mangohub/hub/protocol/v2"
+	v2 "github.com/dengyie/mangohub/protocol/v2"
 	"github.com/dengyie/mangohub/hub/web/connection"
 )
 

@@ -1,0 +1,80 @@
+name: Release
+
+# Publishes installable binaries + checksums.txt for every tag so install.sh
+# can verify downloads. install.sh expects assets named:
+#   mangohub-agent-{os}-{arch}(.exe)  and  mangohub-linux-{arch}
+# Third-party GitHub proxies only serve these files; without checksums.txt the
+# installers cannot detect a tampered download.
+
+on:
+  push:
+    tags: [ "v*", "Snapshot-*" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Build and publish release assets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: |
+            hub/go.sum
+            agent/go.sum
+
+      - name: Build agent binaries
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          mkdir -p dist
+          build() {
+            local goos="$1" goarch="$2" ext="$3"
+            echo "Building mangohub-agent-${goos}-${goarch}${ext}"
+            GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 \
+              go build -trimpath \
+              -ldflags="-s -w -X github.com/dengyie/mangohub/agent/update.CurrentVersion=${VERSION}" \
+              -o "dist/mangohub-agent-${goos}-${goarch}${ext}" ./agent
+          }
+          for goarch in amd64 arm64 arm 386 loong64; do build linux "$goarch" ""; done
+          for goarch in amd64 arm64; do build darwin "$goarch" ""; done
+          for goarch in amd64 arm64; do build freebsd "$goarch" ""; done
+          for goarch in amd64 arm64 386; do build windows "$goarch" ".exe"; done
+
+      - name: Build hub binaries
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          BUILD_SHA=$(git rev-parse --short=7 HEAD)
+          mkdir -p dist
+          for goarch in amd64 arm64 arm; do
+            echo "Building mangohub-linux-${goarch}"
+            GOOS=linux GOARCH="$goarch" CGO_ENABLED=0 \
+              go build -trimpath \
+              -ldflags="-s -w -X github.com/dengyie/mangohub/hub/utils.CurrentVersion=${VERSION} -X github.com/dengyie/mangohub/hub/utils.VersionHash=${BUILD_SHA}" \
+              -o "dist/mangohub-linux-${goarch}" ./hub
+          done
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum mangohub-agent-* mangohub-linux-* > checksums.txt
+          cat checksums.txt
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/mangohub-agent-*
+            dist/mangohub-linux-*
+            dist/checksums.txt
+          prerelease: ${{ startsWith(github.ref_name, 'Snapshot-') }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true

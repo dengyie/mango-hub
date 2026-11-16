@@ -162,8 +162,45 @@ func selectLatestSnapshotRelease(releases []githubRelease, assetName string) (sn
 	return latest, found
 }
 
+// snapshotNeedsUpdate compares the snapshot tag against the running version.
+// A plain inequality downgraded the fleet: re-publishing an OLDER prerelease
+// tag made every agent "update" backwards. Snapshot tags are date-encoded
+// (Snapshot-YYMMDD-<name>, e.g. Snapshot-260911-mining), so the numeric core
+// orders them; equal cores never update. Unknown schemes fall back to the
+// legacy inequality.
 func snapshotNeedsUpdate(currentVersion string, latest snapshotReleaseCandidate) bool {
-	return currentVersion != latest.TagName
+	if currentVersion == latest.TagName {
+		return false
+	}
+	currentCore := snapshotVersionCore(currentVersion)
+	latestCore := snapshotVersionCore(latest.TagName)
+	if currentCore != "" && latestCore != "" {
+		if currentCore == latestCore {
+			return false
+		}
+		return latestCore > currentCore
+	}
+	return true
+}
+
+// snapshotVersionCore extracts the leading numeric date from a snapshot tag
+// (Snapshot-260911-mining -> 260911). Empty when the scheme differs.
+func snapshotVersionCore(tag string) string {
+	trimmed := strings.TrimPrefix(tag, snapshotVersionPrefix)
+	digits := trimmed
+	for i, r := range trimmed {
+		if r < '0' || r > '9' {
+			digits = trimmed[:i]
+			break
+		}
+	}
+	if digits == "" || len(digits) != len(trimmed) && digits == trimmed[:0] {
+		return ""
+	}
+	if len(digits) < 4 {
+		return ""
+	}
+	return digits
 }
 
 func isContainerAgent() bool {

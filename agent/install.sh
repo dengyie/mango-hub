@@ -183,8 +183,8 @@ uninstall_previous() {
             fi
         fi
     done
-            systemctl --user daemon-reload
-        fi
+    if [ "$user_service" = true ]; then
+        systemctl --user daemon-reload
     elif command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files | grep -q "${service_name}.service"; then
         log_info "Stopping and disabling existing systemd service..."
         systemctl stop ${service_name}.service
@@ -412,15 +412,24 @@ fi
 dl_ok=""
 for try_file in "$file_name" "$legacy_file_name"; do
     download_url="${base_release_url}/${try_file}"
-    if [ -n "$github_proxy" ] || [ "$install_no_mirror" = "true" ]; then
+    # Third-party GitHub proxies silently retried community-run services for
+# years — each one is a supply-chain hop for a binary that gets chmod +x and
+# installed as root on every node. They are now OPT-IN: explicit
+# --install-ghproxy <prefix>, or MANGOHUB_ALLOW_MIRROR=1 to keep the old
+# default. Direct GitHub is always tried first. Regardless of source, the
+# binary is verified against the release checksums.txt when present.
+if [ -n "$github_proxy" ] || [ "$install_no_mirror" = "true" ] || [ "$MANGOHUB_ALLOW_MIRROR" = "1" ]; then
         download_urls="$download_url"
-    else
-        download_urls="
+        if [ -z "$github_proxy" ] && [ "$MANGOHUB_ALLOW_MIRROR" = "1" ]; then
+            download_urls="
 ${download_url}
 https://ghfast.top/${download_url}
 https://gh-proxy.com/${download_url}
 https://ghproxy.net/${download_url}
 "
+        fi
+    else
+        download_urls="$download_url"
     fi
 
     for u in $download_urls; do
@@ -439,6 +448,42 @@ if [ -z "$dl_ok" ]; then
     log_error "Retry later, or specify --install-ghproxy <mirror-prefix> manually"
     exit 1
 fi
+
+# Verify the downloaded binary against the release checksums.txt BEFORE it is
+# made executable or installed. A release without checksums.txt only warns
+# (legacy releases); any hash mismatch aborts hard.
+verify_release_checksum() {
+    local binary_path="$1" asset_name="$2"
+    if ! command -v sha256sum >/dev/null 2>&1; then
+        log_warn "sha256sum not available on this host; skipping checksum verification"
+        return 0
+    fi
+    local sums_url="${base_release_url}/checksums.txt"
+    local sums_file="${target_dir}/.checksums.txt"
+    if ! curl -fsL --connect-timeout 15 -o "$sums_file" "$sums_url" || [ ! -s "$sums_file" ]; then
+        rm -f "$sums_file"
+        log_warn "checksums.txt not found for this release; skipping integrity verification (legacy release?)"
+        return 0
+    fi
+    local expected
+    expected=$(grep -E "^[0-9a-fA-F]{64}[[:space:]]+\*?${asset_name}\$" "$sums_file" | awk '{print $1}')
+    rm -f "$sums_file"
+    if [ -z "$expected" ]; then
+        log_warn "no checksum entry for ${asset_name} in checksums.txt; skipping integrity verification"
+        return 0
+    fi
+    local actual
+    actual=$(sha256sum "$binary_path" | awk '{print $1}')
+    if [ "$actual" != "$expected" ]; then
+        log_error "CHECKSUM MISMATCH for ${asset_name}: expected ${expected}, got ${actual}"
+        log_error "The download may be corrupted or tampered. NOT installing."
+        rm -f "$binary_path"
+        exit 1
+    fi
+    log_info "Checksum verified: ${actual}"
+}
+
+verify_release_checksum "$mangohub_agent_path" "$try_file"
 
 # Set executable permissions
 chmod +x "$mangohub_agent_path"

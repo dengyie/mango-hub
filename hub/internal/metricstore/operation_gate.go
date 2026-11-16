@@ -35,6 +35,14 @@ func (g *storeOperationGate) AcquireShared(ctx context.Context) error {
 	return g.semaphore.Acquire(ctx, 1)
 }
 
+// TryAcquireShared is the non-blocking variant used by the report flusher:
+// while an exclusive operation is waiting or running, shared holders would
+// queue behind it and burn their whole deadline, so the flusher prefers to
+// bail out and retry next tick.
+func (g *storeOperationGate) TryAcquireShared() bool {
+	return g.semaphore.TryAcquire(1)
+}
+
 func (g *storeOperationGate) ReleaseShared() {
 	g.semaphore.Release(1)
 }

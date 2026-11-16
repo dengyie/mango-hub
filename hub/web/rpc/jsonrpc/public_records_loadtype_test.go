@@ -12,7 +12,7 @@ import (
 	"github.com/dengyie/mangohub/hub/internal/metricstore"
 	"github.com/dengyie/mangohub/hub/pkg/metric"
 	"github.com/dengyie/mangohub/hub/pkg/rpc"
-	v2 "github.com/dengyie/mangohub/hub/protocol/v2"
+	v2 "github.com/dengyie/mangohub/protocol/v2"
 )
 
 // useMetricsTestStore 挂载一块内存 metric store 供 API 层集成测试使用。

@@ -185,7 +185,7 @@ func runStoreMigration(ctx context.Context, cancel context.CancelFunc, done chan
 		storeMigMu.Unlock()
 	}
 
-	total, err := migrateBetweenStores(ctx, src, dst, observe)
+	total, err := migrateBetweenStores(ctx, src, dst, observe, storeMigrationGateBreather(ctx, targetFP))
 	if err != nil {
 		if ctx.Err() != nil {
 			finishStoreMigration("canceled", nil)
@@ -202,6 +202,42 @@ func runStoreMigration(ctx context.Context, cancel context.CancelFunc, done chan
 	}
 	finishStoreMigration("completed", nil)
 	logger.Infof("metricstore", "[store-migration] completed via API (%d points) target_driver=%s", total, ResolveDriverFromConfig(cfg.Driver, cfg.DSN))
+}
+
+// storeMigrationGateBreather returns the per-metric gate release/re-acquire
+// hook used by migrateBetweenStores. The exclusive lease is handed to the
+// migration goroutine by StartStoreMigration; breathing releases it briefly
+// so report flushes proceed, then re-acquires (honoring ctx cancellation) and
+// re-resolves the active store. A fingerprint mismatch across the window
+// (hot reload to a DIFFERENT target) aborts the resumable migration cleanly.
+func storeMigrationGateBreather(ctx context.Context, targetFP string) storeMigrationBreather {
+	return func(ctx context.Context) (*metric.Store, error) {
+		storeOperations.Release()
+		// Give the report batcher a window to drain its backlog.
+		window := time.NewTimer(2 * time.Second)
+		select {
+		case <-window.C:
+		case <-ctx.Done():
+			window.Stop()
+			return nil, ctx.Err()
+		}
+		if err := storeOperations.Acquire(ctx); err != nil {
+			return nil, fmt.Errorf("re-acquire store operation gate during migration: %w", err)
+		}
+		storeMu.RLock()
+		active := store
+		fingerprint := storeFingerprint
+		storeMu.RUnlock()
+		if fingerprint != targetFP {
+			storeOperations.Release()
+			return nil, fmt.Errorf("active metric store changed during migration (fingerprint mismatch); re-run the migration against the new target")
+		}
+		if active == nil {
+			storeOperations.Release()
+			return nil, ErrStoreNotInitialized
+		}
+		return active, nil
+	}
 }
 
 // finishStoreMigration 统一收尾：设置终态状态、结束时间与错误信息。

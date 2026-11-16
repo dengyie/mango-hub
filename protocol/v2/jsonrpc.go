@@ -264,3 +264,60 @@ func Success(id any, result any) Response {
 func Error(id any, code int, message string, data any) Response {
 	return Response{JSONRPC: Version, ID: id, Error: &RPCError{Code: code, Message: message, Data: data}}
 }
+
+type EventResult struct {
+	Status string  `json:"status,omitempty"`
+	Events []Event `json:"events,omitempty"`
+}
+
+func NewNotification(method string, params interface{}) []byte {
+	payload, _ := json.Marshal(Request{JSONRPC: Version, Method: method, Params: params})
+	return payload
+}
+
+func NewRequest(id interface{}, method string, params interface{}) []byte {
+	payload, _ := json.Marshal(Request{JSONRPC: Version, Method: method, Params: params, ID: id})
+	return payload
+}
+
+func BuildReportPayload(report []byte) []byte {
+	return NewNotification(MethodAgentReport, reportParams{Report: json.RawMessage(report)})
+}
+
+func BuildReportRequest(id interface{}, report []byte, ackEventIDs []string) []byte {
+	return NewRequest(id, MethodAgentReport, reportParams{Report: json.RawMessage(report), AckEventIDs: ackEventIDs})
+}
+
+func BuildBasicInfoPayload(info map[string]interface{}) []byte {
+	return NewNotification(MethodAgentBasicInfo, map[string]interface{}{"info": info})
+}
+
+type reportParams struct {
+	Report      json.RawMessage `json:"report"`
+	AckEventIDs []string        `json:"ack_event_ids,omitempty"`
+}
+
+func BuildPingResultPayload(taskID uint, pingType string, value int, finishedAt time.Time) interface{} {
+	return Request{
+		JSONRPC: Version,
+		Method:  MethodAgentPingResult,
+		Params: map[string]interface{}{
+			"task_id":     taskID,
+			"ping_type":   pingType,
+			"value":       value,
+			"finished_at": finishedAt.Format(time.RFC3339Nano),
+		},
+	}
+}
+
+func BindParams(raw interface{}, target interface{}) error {
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(b, target)
+}
+
+func BindResult(raw interface{}, target interface{}) error {
+	return BindParams(raw, target)
+}

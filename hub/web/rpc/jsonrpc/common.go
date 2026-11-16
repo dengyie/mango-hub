@@ -6,6 +6,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dengyie/mangohub/hub/database"
@@ -14,7 +15,7 @@ import (
 	"github.com/dengyie/mangohub/hub/database/tasks"
 	"github.com/dengyie/mangohub/hub/internal/config"
 	"github.com/dengyie/mangohub/hub/pkg/rpc"
-	v2 "github.com/dengyie/mangohub/hub/protocol/v2"
+	v2 "github.com/dengyie/mangohub/protocol/v2"
 	"github.com/dengyie/mangohub/hub/utils"
 	agent_runtime "github.com/dengyie/mangohub/hub/web/agent"
 
@@ -23,6 +24,62 @@ import (
 
 // pingstats:<uuid>
 var pingStatsCache = cache.New(1*time.Minute, 2*time.Minute)
+
+// pingTasksCache fronts GetAllPingTasks for the latest-status hot path: the
+// call used to hit the DB on every request (every ~4s per viewer) although
+// ping tasks change rarely.
+var pingTasksCache = cache.New(5*time.Second, 10*time.Second)
+
+// pingStatsInflight dedups concurrent per-node ping-stat computations: all
+// viewers expire their 1-minute cache at roughly the same time and used to
+// re-run the same per-node 1-hour records query simultaneously.
+var pingStatsInflight = struct {
+	mu    sync.Mutex
+	calls map[string]*pingStatsCall
+}{calls: make(map[string]*pingStatsCall)}
+
+type pingStatsCall struct {
+	done   chan struct{}
+	result map[string]pingStat
+}
+
+// getAllPingTasksCached returns the ping task list from a 5s cache.
+func getAllPingTasksCached() []models.PingTask {
+	if v, ok := pingTasksCache.Get("tasks"); ok {
+		if tasks, ok2 := v.([]models.PingTask); ok2 {
+			return tasks
+		}
+	}
+	tasks, err := tasks.GetAllPingTasks()
+	if err != nil {
+		return nil
+	}
+	pingTasksCache.Set("tasks", tasks, cache.DefaultExpiration)
+	return tasks
+}
+
+// getPingStatsSingleflight collapses concurrent computations for the same
+// uuid onto one in-flight call.
+func getPingStatsSingleflight(uuid string, pingTasks []models.PingTask) map[string]pingStat {
+	pingStatsInflight.mu.Lock()
+	if call, ok := pingStatsInflight.calls[uuid]; ok {
+		pingStatsInflight.mu.Unlock()
+		<-call.done
+		return call.result
+	}
+	call := &pingStatsCall{done: make(chan struct{})}
+	pingStatsInflight.calls[uuid] = call
+	pingStatsInflight.mu.Unlock()
+
+	defer func() {
+		pingStatsInflight.mu.Lock()
+		delete(pingStatsInflight.calls, uuid)
+		pingStatsInflight.mu.Unlock()
+		close(call.done)
+	}()
+	call.result = getPingStatsForNode(uuid, pingTasks)
+	return call.result
+}
 
 type pingStat struct {
 	Name   string  `json:"name"`
@@ -370,14 +427,14 @@ func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 
 	respMap := make(map[string]recordLike, len(latest))
 
-	// 预取所有 ping 任务
-	pingTasks, _ := tasks.GetAllPingTasks()
+	// 预取所有 ping 任务（5s 缓存，命中热路径避免每请求查库）
+	pingTasks := getAllPingTasksCached()
 
 	appendOne := func(uuid string, rep *v2.Report) {
 		if rep == nil {
 			return
 		}
-		stats := getPingStatsForNode(uuid, pingTasks)
+		stats := getPingStatsSingleflight(uuid, pingTasks)
 		rl := recordLike{
 			Client:         uuid,
 			Time:           rep.UpdatedAt,

@@ -6,7 +6,7 @@ import (
 
 	"github.com/dengyie/mangohub/hub/database/dbcore"
 	"github.com/dengyie/mangohub/hub/database/models"
-	v2 "github.com/dengyie/mangohub/hub/protocol/v2"
+	v2 "github.com/dengyie/mangohub/protocol/v2"
 )
 
 func GetClientUUIDByToken(token string) (clientUUID string, err error) {

@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/dengyie/mangohub/hub/database/clients"
-	v2 "github.com/dengyie/mangohub/hub/protocol/v2"
+	v2 "github.com/dengyie/mangohub/protocol/v2"
 	"github.com/dengyie/mangohub/hub/utils"
 	logger "github.com/dengyie/mangohub/hub/utils/log"
 	agent_runtime "github.com/dengyie/mangohub/hub/web/agent"

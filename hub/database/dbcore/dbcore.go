@@ -494,6 +494,10 @@ func doInitialize() error {
 		dbFileExistedAtStartup = true
 	}
 
+	// NOTE: PrepareStmt is deliberately NOT enabled. With MaxOpenConns(1) the
+	// cached prepared statements pin the single connection and break manual
+	// transactions ("cannot commit transaction - SQL statements in progress"
+	// at startup migrations). Revisit only together with a read pool.
 	logConfig := &gorm.Config{
 		Logger:  logger.NewGormLogger(),
 		NowFunc: func() time.Time { return time.Now().UTC() },

@@ -1092,6 +1092,40 @@ download_file() {
     return "$download_status"
 }
 
+# verify_release_checksum checks the downloaded binary against the release's
+# checksums.txt before installation. Missing checksums file (legacy release)
+# only warns; a hash mismatch aborts hard — this binary runs as root holding
+# every node's credentials.
+verify_release_checksum() {
+    local binary_path="$1" asset_name="$2" sums_url="$3"
+    if ! command -v sha256sum >/dev/null 2>&1; then
+        log_info "sha256sum not available; skipping checksum verification"
+        return 0
+    fi
+    local sums_file="${DATA_DIR:-/tmp}/.checksums.txt"
+    if ! curl -fsSL -o "$sums_file" "$sums_url" || [ ! -s "$sums_file" ]; then
+        rm -f "$sums_file"
+        log_info "checksums.txt not found for this release; skipping integrity verification (legacy release?)"
+        return 0
+    fi
+    local expected
+    expected=$(grep -E "^[0-9a-fA-F]{64}[[:space:]]+\*?${asset_name}\$" "$sums_file" | awk '{print $1}')
+    rm -f "$sums_file"
+    if [ -z "$expected" ]; then
+        log_info "no checksum entry for ${asset_name}; skipping integrity verification"
+        return 0
+    fi
+    local actual
+    actual=$(sha256sum "$binary_path" | awk '{print $1}')
+    if [ "$actual" != "$expected" ]; then
+        log_error "CHECKSUM MISMATCH for ${asset_name}: expected ${expected}, got ${actual}"
+        log_error "The download may be corrupted or tampered. NOT installing."
+        rm -f "$binary_path"
+        exit 1
+    fi
+    log_info "Checksum verified: ${actual}"
+}
+
 # ==========================================================
 # 业务操作
 # ==========================================================
@@ -1152,6 +1186,8 @@ install_binary() {
         ui_msgbox "$(msg title_error)" "$(msg download_failed)"
         return 1
     fi
+
+    verify_release_checksum "$BINARY_PATH" "$(basename "$download_url")"         "${download_url%/*}/checksums.txt"
 
     chmod +x "$BINARY_PATH"
     log_success "$(msg binary_installed "$EDITION_NAME" "$BINARY_PATH")"
@@ -1306,6 +1342,9 @@ upgrade_mangohub() {
         ui_msgbox "$(msg title_error)" "$(msg download_failed_restore)"
         return 1
     fi
+
+    verify_release_checksum "$BINARY_PATH" "$(basename "$download_url")" \
+        "${download_url%/*}/checksums.txt"
 
     chmod +x "$BINARY_PATH"
 

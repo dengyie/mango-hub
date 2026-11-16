@@ -16,7 +16,7 @@ import (
 
 	"github.com/dengyie/mangohub/agent/dnsresolver"
 	"github.com/dengyie/mangohub/agent/monitoring"
-	v2 "github.com/dengyie/mangohub/agent/protocol/v2"
+	v2 "github.com/dengyie/mangohub/protocol/v2"
 	"github.com/dengyie/mangohub/agent/reconnect"
 	"github.com/dengyie/mangohub/agent/sshauth"
 	"github.com/dengyie/mangohub/agent/terminal"

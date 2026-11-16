@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/dengyie/mangohub/agent/dnsresolver"
-	v2 "github.com/dengyie/mangohub/agent/protocol/v2"
+	v2 "github.com/dengyie/mangohub/protocol/v2"
 	"github.com/dengyie/mangohub/agent/ws"
 	ping "github.com/prometheus-community/pro-bing"
 )

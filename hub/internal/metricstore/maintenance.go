@@ -62,9 +62,12 @@ func InspectStorage(ctx context.Context) (StorageInfo, error) {
 // It takes the exclusive operation lock, so a table/file rewrite cannot run
 // concurrently with report writes or compaction.
 func ReclaimSpace(ctx context.Context) (MaintenanceResult, error) {
-	// Reclamation is intentionally non-cancellable. It waits for all active
-	// operations, then keeps the store gate until digest conversion, VACUUM,
-	// and the final checkpoint have completed.
+	// Reclamation is intentionally non-cancellable once admitted (SQLite
+	// cannot resume a half-done VACUUM, and the pre-reclaim cleanup is
+	// cheapest inside the same exclusive window). TestReclaimSpaceWaitsForStore
+	// pins this contract. The flushing impact of the exclusive window is now
+	// handled on the writer side: the report batcher pauses (ErrStoreOperation-
+	// Paused) instead of burning its deadline and erroring every tick.
 	_ = ctx
 	if err := storeOperations.Acquire(context.Background()); err != nil {
 		return MaintenanceResult{}, err

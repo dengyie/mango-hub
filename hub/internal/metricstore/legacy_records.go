@@ -30,28 +30,16 @@ func GetRecordMetricMaxByClientAndTime(ctx context.Context, clientUUID, recordMe
 	return getRecordMetricMaxByClientAndTimeFromSeries(ctx, s, clientUUID, recordMetric, start, end)
 }
 
-// GetRecordsByTime 从 metric store 查询所有客户端在时间范围内的记录
+// GetRecordsByTime 从 metric store 查询所有客户端在时间范围内的记录。
+// 一次 SeriesBatch 覆盖全部指标 × 全部实体：旧实现先跑 15 次 EntityIDs、
+// 再对每个客户端 × 每个指标各发一次 Series（31 节点 ≈ 480 条 SQL，占满
+// 2 连接读池数秒，直接挤压报表 flush 的读路径）。
 func GetRecordsByTime(ctx context.Context, start, end time.Time) ([]models.Record, error) {
 	s := GetStore()
 	if s == nil {
 		return nil, fmt.Errorf("metric store not enabled")
 	}
-
-	interval := recordSeriesInterval(s, start, end, time.Now().UTC())
-	entityIDs, err := listRecordEntityIDs(ctx, s, start, end, interval)
-	if err != nil {
-		return nil, err
-	}
-	var records []models.Record
-	for _, entityID := range entityIDs {
-		items, err := getRecordsByClientAndTimeFromSeries(ctx, s, entityID, start, end)
-		if err != nil {
-			return nil, err
-		}
-		records = append(records, items...)
-	}
-	sortRecords(records)
-	return records, nil
+	return recordsFromSeriesBatch(ctx, s, nil, start, end)
 }
 
 type recordSeriesKey struct {
@@ -59,30 +47,42 @@ type recordSeriesKey struct {
 	ts     int64
 }
 
-func getRecordsByClientAndTimeFromSeries(ctx context.Context, s *metric.Store, clientUUID string, start, end time.Time) ([]models.Record, error) {
+// recordsFromSeriesBatch merges every load-record metric across the given
+// entities (nil = all entities) into models.Record rows in ONE SeriesBatch
+// query. PreserveSeries keeps per-entity buckets instead of merging the whole
+// fleet into shared buckets.
+func recordsFromSeriesBatch(ctx context.Context, s *metric.Store, entityIDs []string, start, end time.Time) ([]models.Record, error) {
 	now := time.Now().UTC()
 	interval := recordSeriesInterval(s, start, end, now)
-	recordMap := make(map[recordSeriesKey]*models.Record)
-
+	specs := make([]metric.BatchSeriesSpec, 0, len(loadRecordMetricNames))
 	for _, metricName := range loadRecordMetricNames {
-		points, err := s.Series(ctx, metric.AggregateQuery{
-			Query: metric.Query{
-				MetricName: metricName,
-				EntityID:   clientUUID,
-				Start:      start,
-				End:        end,
-				Order:      metric.OrderAsc,
-			},
-			Aggregation: recordMetricAggregation(metricName),
-			Interval:    interval,
-		}, now)
-		if err != nil {
-			return nil, fmt.Errorf("failed to query metric %s: %w", metricName, err)
-		}
-		for _, point := range points {
+		specs = append(specs, metric.BatchSeriesSpec{
+			MetricName:     metricName,
+			Aggregations:   []metric.Aggregation{recordMetricAggregation(metricName)},
+			Interval:       interval,
+			PreserveSeries: true,
+		})
+	}
+	result, err := s.SeriesBatch(ctx, metric.BatchSeriesQuery{
+		Specs:     specs,
+		EntityIDs: entityIDs,
+		Start:     start,
+		End:       end,
+		Order:     metric.OrderAsc,
+	}, now)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query record metrics: %w", err)
+	}
+
+	recordMap := make(map[recordSeriesKey]*models.Record)
+	for _, metricName := range loadRecordMetricNames {
+		for _, point := range result.Values[metricName][recordMetricAggregation(metricName)] {
 			entityID := point.EntityID
+			if entityID == "" && len(entityIDs) == 1 {
+				entityID = entityIDs[0]
+			}
 			if entityID == "" {
-				entityID = clientUUID
+				continue
 			}
 			key := recordSeriesKey{client: entityID, ts: point.Bucket.Unix()}
 			if recordMap[key] == nil {
@@ -101,6 +101,10 @@ func getRecordsByClientAndTimeFromSeries(ctx context.Context, s *metric.Store, c
 	}
 	sortRecords(records)
 	return records, nil
+}
+
+func getRecordsByClientAndTimeFromSeries(ctx context.Context, s *metric.Store, clientUUID string, start, end time.Time) ([]models.Record, error) {
+	return recordsFromSeriesBatch(ctx, s, []string{clientUUID}, start, end)
 }
 
 func getRecordMetricMaxByClientAndTimeFromSeries(ctx context.Context, s *metric.Store, clientUUID, recordMetric string, start, end time.Time) ([]models.Record, error) {

@@ -64,7 +64,17 @@ type storeMigrationObserver func(currentMetric string, metricIndex, totalMetrics
 
 // 观察者 observe（为 nil 时行为与旧版本完全一致）。WebUI/API 手动触发的迁移传入
 // 回调以实时更新进度。
-func migrateBetweenStores(ctx context.Context, src, dst *metric.Store, observe storeMigrationObserver) (int64, error) {
+// storeMigrationBreather releases the exclusive store-operation gate between
+// metrics so live report flushes can proceed, then re-acquires and re-resolves
+// the active target store. Holding the gate for the WHOLE migration starved
+// the report batcher (flush errors every 3s for the migration's duration).
+// Upsert-based import is resumable and interleaving live writes with
+// historical import is safe; the fingerprint recheck aborts cleanly if the
+// active target changed across the window (hot reload of a DIFFERENT store),
+// in which case the migration can simply be re-run.
+type storeMigrationBreather func(ctx context.Context) (*metric.Store, error)
+
+func migrateBetweenStores(ctx context.Context, src, dst *metric.Store, observe storeMigrationObserver, breather storeMigrationBreather) (int64, error) {
 	if src == nil || dst == nil {
 		return 0, fmt.Errorf("source or destination metric store is nil")
 	}
@@ -76,6 +86,16 @@ func migrateBetweenStores(ctx context.Context, src, dst *metric.Store, observe s
 
 	var total int64
 	for i, def := range defs {
+		// 让出独占门，给实时上报一个写入窗口；窗口后重新解析当前目标库。
+		if breather != nil {
+			breathed, err := breather(ctx)
+			if err != nil {
+				return total, err
+			}
+			if breathed != nil {
+				dst = breathed
+			}
+		}
 		if observe != nil {
 			// 进入下一个指标：已完成 i 个指标。
 			observe(def.Name, i, len(defs), 0)

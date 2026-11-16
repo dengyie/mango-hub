@@ -11,7 +11,7 @@ import (
 
 	"github.com/dengyie/mangohub/hub/database/models"
 	"github.com/dengyie/mangohub/hub/pkg/metric"
-	v2 "github.com/dengyie/mangohub/hub/protocol/v2"
+	v2 "github.com/dengyie/mangohub/protocol/v2"
 )
 
 type reportTrafficState struct {
@@ -53,7 +53,45 @@ var (
 	ErrReportBatchQueueFull = errors.New("metric report batch queue is full")
 	ErrReportBatchStopped   = errors.New("metric report batcher is stopped")
 	ErrPingBatchQueueFull   = errors.New("ping batch queue is full")
+
+	// ErrStoreOperationPaused is returned by writeReportBatch while a store
+	// maintenance (VACUUM) or store-to-store migration holds the exclusive
+	// operation gate. The batcher keeps its pending backlog and retries next
+	// tick; run() logs this state as throttled info instead of an error per
+	// tick, so a 30-minute migration no longer spams "failed to flush"
+	// every 3 seconds.
+	ErrStoreOperationPaused = errors.New("metric store operation in progress; report flush paused")
 )
+
+// reportPauseLogState throttles the "flush paused by store operation" notice.
+var reportPauseLogState struct {
+	mu      sync.Mutex
+	lastLog time.Time
+	resumed bool
+}
+
+// logFlushPaused logs the paused state at most once per interval and logs a
+// single "resumed" line when the pipeline picks back up.
+func logFlushPaused() {
+	reportPauseLogState.mu.Lock()
+	defer reportPauseLogState.mu.Unlock()
+	now := time.Now()
+	if reportPauseLogState.lastLog.IsZero() || now.Sub(reportPauseLogState.lastLog) >= reportQueueFullLogInterval {
+		logger.Infof("metricstore", "metric report flush paused by store operation (maintenance/migration); backlog retained and retried per tick")
+		reportPauseLogState.lastLog = now
+		reportPauseLogState.resumed = true
+	}
+}
+
+func logFlushResumed() {
+	reportPauseLogState.mu.Lock()
+	defer reportPauseLogState.mu.Unlock()
+	if reportPauseLogState.resumed {
+		logger.Infof("metricstore", "metric report flush resumed; draining retained backlog")
+		reportPauseLogState.resumed = false
+		reportPauseLogState.lastLog = time.Time{}
+	}
+}
 
 // reportQueueFullLogState throttles the queue-full warning to one line per
 // interval with a suppressed-count suffix, mirroring the duplicate-rejection
@@ -263,7 +301,14 @@ func (w *reportBatchWorker) run() {
 			}
 			pending = append(pending, drainReportQueue(w.queue, reportBatchQueueSize)...)
 			if err := writePendingReports(context.Background(), &pending); err != nil {
-				logger.Errorf("metricstore", "failed to flush metric report batch: %v", err)
+				if errors.Is(err, ErrStoreOperationPaused) {
+					logFlushPaused()
+				} else {
+					logFlushResumed()
+					logger.Errorf("metricstore", "failed to flush metric report batch: %v", err)
+				}
+			} else {
+				logFlushResumed()
 			}
 		}
 	}
@@ -380,8 +425,12 @@ func writeReportBatch(ctx context.Context, reports []v2.Report) ([]v2.Report, er
 	if len(reports) == 0 {
 		return nil, nil
 	}
-	if err := storeOperations.AcquireShared(ctx); err != nil {
-		return nil, fmt.Errorf("wait for metric store operation before writing reports: %w", err)
+	// Fast shared acquire: while an exclusive operation (maintenance or
+	// migration) is waiting or running, shared holders would queue behind it
+	// and burn the whole flush deadline. Bailing out immediately keeps the
+	// backlog intact and signals the paused state instead.
+	if !storeOperations.TryAcquireShared() {
+		return nil, ErrStoreOperationPaused
 	}
 	defer storeOperations.ReleaseShared()
 

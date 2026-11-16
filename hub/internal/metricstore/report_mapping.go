@@ -8,7 +8,7 @@ import (
 
 	"github.com/dengyie/mangohub/hub/database/models"
 	"github.com/dengyie/mangohub/hub/pkg/metric"
-	v2 "github.com/dengyie/mangohub/hub/protocol/v2"
+	v2 "github.com/dengyie/mangohub/protocol/v2"
 )
 
 func reportMetricPoints(report v2.Report, trafficUp, trafficDown int64) []metric.Point {

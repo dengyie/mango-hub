@@ -16,7 +16,7 @@ import (
 
 	"github.com/dengyie/mangohub/hub/internal/config"
 	"github.com/dengyie/mangohub/hub/pkg/rpc"
-	v2 "github.com/dengyie/mangohub/hub/protocol/v2"
+	v2 "github.com/dengyie/mangohub/protocol/v2"
 	"github.com/dengyie/mangohub/hub/utils"
 	"github.com/dengyie/mangohub/hub/utils/geoip"
 	"github.com/dengyie/mangohub/hub/utils/messageSender"

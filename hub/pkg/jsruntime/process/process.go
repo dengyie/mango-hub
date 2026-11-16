@@ -44,12 +44,39 @@ func New(runtime *bridge.Runtime, filesystem *fs.Module, allowExec bool, started
 	return &Module{runtime: runtime, fs: filesystem, allowExec: allowExec, startedAt: startedAt, reportError: reportError}
 }
 
+// allowedScriptEnv lists the environment variables scripts may see through
+// process.env. Everything else (notably MANGOHUB_SECRET_KEY and any other
+// vault/credential material in the hub's env file) stays private to the hub.
+var allowedScriptEnv = map[string]struct{}{
+	"PATH":        {},
+	"HOME":        {},
+	"LANG":        {},
+	"LC_ALL":      {},
+	"TZ":          {},
+	"TMPDIR":      {},
+	"TERM":        {},
+	"NODE_PATH":   {},
+	"NO_COLOR":    {},
+	"HTTP_PROXY":  {},
+	"HTTPS_PROXY": {},
+	"NO_PROXY":    {},
+}
+
 func (m *Module) Load(vm *goja.Runtime, module *goja.Object) {
 	process := events.NewEmitter(vm)
+	// Allow-list the environment: the hub process carries secrets in env
+	// (MANGOHUB_SECRET_KEY decrypts the SSH key vault), and scripts used to
+	// read the whole os.Environ() through process.env. Scripts get only the
+	// non-sensitive variables they plausibly need; child_process (Node-mode
+	// exec) inherits the hub environment at the OS level, which is gated
+	// behind the separate AllowExec permission.
 	environment := make(map[string]string)
 	for _, item := range os.Environ() {
 		parts := strings.SplitN(item, "=", 2)
-		if len(parts) == 2 {
+		if len(parts) != 2 {
+			continue
+		}
+		if _, ok := allowedScriptEnv[parts[0]]; ok {
 			environment[parts[0]] = parts[1]
 		}
 	}

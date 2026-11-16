@@ -11,7 +11,7 @@ import (
 	"github.com/dengyie/mangohub/agent/dnsresolver"
 	monitoring "github.com/dengyie/mangohub/agent/monitoring/unit"
 	"github.com/dengyie/mangohub/agent/protocol/transport"
-	v2 "github.com/dengyie/mangohub/agent/protocol/v2"
+	v2 "github.com/dengyie/mangohub/protocol/v2"
 	"github.com/dengyie/mangohub/agent/update"
 
 	pkg_flags "github.com/dengyie/mangohub/agent/cmd/flags"
