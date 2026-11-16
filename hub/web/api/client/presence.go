@@ -31,6 +31,20 @@ const (
 // 没有挑战者时的兜底清理。仅为测试可调。
 var zombieConnThreshold = 40 * time.Second
 
+// duplicateFreshWindow 是免探测直接拒绝挑战者的窗口：最后一帧距今不足
+// 该值说明对端仍在持续发帧（默认上报间隔 3s + 采集耗时），无需再花一个
+// 探测往返去确认。介于该窗口与 zombieConnThreshold 之间的"不确定区"
+// 交给 ProbeAlive 用一个 ping/pong 往返裁决，半开死连接因此能在 ~3s
+// 内被健康接管，而不是像旧逻辑那样让重连的 agent 白吃 1008 拒绝、再
+// 等 40s 僵尸过期（生产日志中的常态假失联窗口）。仅为测试可调。
+var duplicateFreshWindow = 4 * time.Second
+
+// duplicateProbeWait 是 ProbeAlive 等待 pong 的时限。要大于跨 CDN 的
+// 一个往返（数百毫秒量级），小于 agent 两次重连尝试的间隔（旧版二进制
+// 无退避，~2s），否则上一个挑战者的探测还没出结果，下一个挑战者就要
+// 排队。仅为测试可调。
+var duplicateProbeWait = 3 * time.Second
+
 type postPresenceEntry struct {
 	connID     int64
 	timer      *time.Timer

@@ -304,3 +304,112 @@ func TestDuplicateRejectTakeTicketThrottles(t *testing.T) {
 		t.Fatalf("suppressed count = %d, want 2", suppressed)
 	}
 }
+
+// A registered connection that stopped answering control frames (half-open
+// socket) must lose its slot to the challenger within one probe round trip —
+// not after zombieConnThreshold of duplicate rejections. This is the
+// production 假失联 window the probe-then-takeover decision collapses.
+func TestWebSocketV2RPCTakesOverUnresponsiveAfterProbe(t *testing.T) {
+	oldThreshold := zombieConnThreshold
+	oldFresh := duplicateFreshWindow
+	oldProbe := duplicateProbeWait
+	zombieConnThreshold = 3 * time.Second
+	duplicateFreshWindow = 200 * time.Millisecond
+	duplicateProbeWait = 400 * time.Millisecond
+	t.Cleanup(func() {
+		zombieConnThreshold = oldThreshold
+		duplicateFreshWindow = oldFresh
+		duplicateProbeWait = oldProbe
+	})
+
+	clientUUID := "client-v2-ws-probe-takeover"
+	token := "token-v2-ws-probe-takeover"
+	wsURL := setupV2WSTest(t, clientUUID, token)
+
+	dead := dialV2WS(t, wsURL)
+	waitRegisteredV2Client(t, clientUUID)
+	// 死连接的客户端不进入读循环：hub 的探测 ping 不会被处理成 pong。
+	// 静默到跨过 fresh window、仍处在 zombie threshold 之内，走探测裁决。
+	time.Sleep(600 * time.Millisecond)
+
+	started := time.Now()
+	fresh := dialV2WS(t, wsURL)
+	registered := waitRegisteredV2Client(t, clientUUID)
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Fatalf("takeover took %s; expected one probe round trip", elapsed)
+	}
+	roundTripV2Pull(t, fresh)
+
+	// 探测判定死亡后旧连接必须被接管方关掉。
+	_ = dead.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, _, err := dead.ReadMessage(); err == nil {
+		t.Fatalf("unresponsive connection was not closed by the probe takeover")
+	}
+	_ = registered
+}
+
+// A connection whose TCP is alive and still answers pongs must survive the
+// liveness probe: the challenger is rejected and the probed connection keeps
+// serving. Probing must never evict a live-but-quiet reporter.
+func TestWebSocketV2RPCProbeSavesLiveConnection(t *testing.T) {
+	oldThreshold := zombieConnThreshold
+	oldFresh := duplicateFreshWindow
+	oldProbe := duplicateProbeWait
+	zombieConnThreshold = 3 * time.Second
+	duplicateFreshWindow = 200 * time.Millisecond
+	duplicateProbeWait = 1500 * time.Millisecond
+	t.Cleanup(func() {
+		zombieConnThreshold = oldThreshold
+		duplicateFreshWindow = oldFresh
+		duplicateProbeWait = oldProbe
+	})
+
+	clientUUID := "client-v2-ws-probe-alive"
+	token := "token-v2-ws-probe-alive"
+	wsURL := setupV2WSTest(t, clientUUID, token)
+
+	live := dialV2WS(t, wsURL)
+	registered := waitRegisteredV2Client(t, clientUUID)
+
+	// 单读协程：pong 通知与 pull 响应都经 channel 转发。
+	pullResp := make(chan []byte, 1)
+	go func() {
+		for {
+			_, message, err := live.ReadMessage()
+			if err != nil {
+				return
+			}
+			select {
+			case pullResp <- message:
+			default:
+			}
+		}
+	}()
+
+	// 无数据帧，静默跨过 fresh window（读循环的默认 ping handler 会自动回
+	// pong，gorilla 客户端行为），探测应当判定存活并拒绝挑战者。
+	time.Sleep(500 * time.Millisecond)
+	started := time.Now()
+	challenger := dialV2WS(t, wsURL)
+	_ = challenger.SetReadDeadline(time.Now().Add(10 * time.Second))
+	_, _, err := challenger.ReadMessage()
+	if !websocket.IsCloseError(err, websocket.ClosePolicyViolation) {
+		t.Fatalf("expected duplicate rejection 1008 against a ponging connection, got %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > 8*time.Second {
+		t.Fatalf("probe against a live connection took %s", elapsed)
+	}
+
+	if current := agent_runtime.GetConnectedClient(clientUUID); current != registered {
+		t.Fatalf("ponging connection was replaced by the challenger")
+	}
+	request := v2.Request{JSONRPC: v2.Version, ID: "pull-probe-alive", Method: v2.MethodAgentPull, Params: map[string]interface{}{}}
+	if err := live.WriteJSON(request); err != nil {
+		t.Fatalf("write pull request: %v", err)
+	}
+	select {
+	case <-pullResp:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("ponging connection stopped serving pull requests")
+	}
+}
