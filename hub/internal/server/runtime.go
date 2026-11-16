@@ -232,7 +232,7 @@ func cleanupScheduledData() {
 	if err := tasks.ClearTaskResultsByTimeBefore(before); err != nil {
 		logger.Errorf("server", "Failed to clean expired task results: %v", err)
 	}
-	if finalized, err := tasks.FinalizeStaleNullResults(taskStaleNullGrace, before); err != nil {
+	if finalized, err := tasks.FinalizeStaleNullResults(taskStaleNullGrace); err != nil {
 		logger.Errorf("server", "Failed to finalize stale null task results: %v", err)
 	} else if finalized > 0 {
 		logger.Infof("server", "Finalized %d stale task results without agent response", finalized)

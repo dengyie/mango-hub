@@ -91,10 +91,11 @@ func ClearTaskResultsByTimeBefore(before time.Time) error {
 // CreateTask 预建 NULL exit_code 占位行，正常由 agent taskResult 或分发失败
 // 分支回写；但排队事件（TTL 5min）过期被静默丢弃、agent 半路掉线等场景会让
 // 占位行永久悬空，前端只能看到永远「运行中」。本函数是对账兜底，不碰已回传行。
-func FinalizeStaleNullResults(maxAge time.Duration, before time.Time) (int64, error) {
+// maxAge 相对当前时间计算（保留期清理用绝对时间锚点，二者独立）。
+func FinalizeStaleNullResults(maxAge time.Duration) (int64, error) {
 	result := dbcore.GetDBInstance().
 		Model(&models.TaskResult{}).
-		Where("exit_code IS NULL AND created_at < ?", before.UTC().Add(-maxAge)).
+		Where("exit_code IS NULL AND created_at < ?", time.Now().UTC().Add(-maxAge)).
 		Updates(map[string]interface{}{
 			"result":      "Dispatch failed: task expired without agent response",
 			"exit_code":   -1,

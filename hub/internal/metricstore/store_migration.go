@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	logger "github.com/dengyie/mangohub/hub/utils/log"
@@ -157,10 +158,17 @@ func StartStoreMigration(sourceDriver, sourceDSN string) error {
 }
 
 // runStoreMigration 执行实际的搬运逻辑（在独立 goroutine 中）。
+// exclusiveHeld 跟踪独占门是否处于持有态：breather 在等待窗口前后释放/重取，
+// defer 只在仍持有时释放，避免 cancel/fingerprint-mismatch 路径双重 Release
+// 触发 semaphore panic（crash 整个进程）。
 func runStoreMigration(ctx context.Context, cancel context.CancelFunc, done chan struct{}, srcCfg *MetricStoreConfig, cfg *MetricStoreConfig, dst *metric.Store, targetFP string) {
+	var exclusiveHeld atomic.Bool
+	exclusiveHeld.Store(true)
 	defer func() {
 		cancel()
-		storeOperations.Release()
+		if exclusiveHeld.CompareAndSwap(true, false) {
+			storeOperations.Release()
+		}
 
 		storeMigMu.Lock()
 		storeMigCancel = nil
@@ -185,7 +193,7 @@ func runStoreMigration(ctx context.Context, cancel context.CancelFunc, done chan
 		storeMigMu.Unlock()
 	}
 
-	total, err := migrateBetweenStores(ctx, src, dst, observe, storeMigrationGateBreather(ctx, targetFP))
+	total, err := migrateBetweenStores(ctx, src, dst, observe, storeMigrationGateBreather(ctx, targetFP, &exclusiveHeld))
 	if err != nil {
 		if ctx.Err() != nil {
 			finishStoreMigration("canceled", nil)
@@ -210,9 +218,14 @@ func runStoreMigration(ctx context.Context, cancel context.CancelFunc, done chan
 // so report flushes proceed, then re-acquires (honoring ctx cancellation) and
 // re-resolves the active store. A fingerprint mismatch across the window
 // (hot reload to a DIFFERENT target) aborts the resumable migration cleanly.
-func storeMigrationGateBreather(ctx context.Context, targetFP string) storeMigrationBreather {
+//
+// held 是 runStoreMigration 的 exclusiveHeld 标志：breather 的每个出口都精确
+// 更新它，使 defer 与 breather 的 Release 严格配对（正好持有一次权重）。
+func storeMigrationGateBreather(ctx context.Context, targetFP string, held *atomic.Bool) storeMigrationBreather {
 	return func(ctx context.Context) (*metric.Store, error) {
-		storeOperations.Release()
+		if held.CompareAndSwap(true, false) {
+			storeOperations.Release()
+		}
 		// Give the report batcher a window to drain its backlog.
 		window := time.NewTimer(2 * time.Second)
 		select {
@@ -224,16 +237,21 @@ func storeMigrationGateBreather(ctx context.Context, targetFP string) storeMigra
 		if err := storeOperations.Acquire(ctx); err != nil {
 			return nil, fmt.Errorf("re-acquire store operation gate during migration: %w", err)
 		}
+		held.Store(true)
 		storeMu.RLock()
 		active := store
 		fingerprint := storeFingerprint
 		storeMu.RUnlock()
 		if fingerprint != targetFP {
-			storeOperations.Release()
+			if held.CompareAndSwap(true, false) {
+				storeOperations.Release()
+			}
 			return nil, fmt.Errorf("active metric store changed during migration (fingerprint mismatch); re-run the migration against the new target")
 		}
 		if active == nil {
-			storeOperations.Release()
+			if held.CompareAndSwap(true, false) {
+				storeOperations.Release()
+			}
 			return nil, ErrStoreNotInitialized
 		}
 		return active, nil

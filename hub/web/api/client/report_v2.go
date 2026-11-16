@@ -197,36 +197,39 @@ func WebSocketV2RPC(c *gin.Context) {
 	//     challenger within duplicateProbeWait instead of the ~40s zombie
 	//     expiry that production logs show as recurring 假失联 windows;
 	//   - past zombieConnThreshold: long known-dead, replace without probing.
-	// The whole decision plus registration is serialized per uuid so two
-	// concurrent challengers (old agent binaries retry every ~2s) cannot both
-	// probe and take over.
+	// Decision plus registration are serialized per uuid so two concurrent
+	// challengers (old agent binaries retry every ~2s) cannot both probe, both
+	// take over, and leave the loser live-serving but unregistered (no pushed
+	// events) — registration happens inside the same lock.
 	rejected := false
 	agent_runtime.WithRegistrationLock(uuid, func() {
 		oldConn := agent_runtime.GetConnectedClient(uuid)
-		if oldConn == nil {
+		if oldConn != nil {
+			age := time.Since(oldConn.LastActive())
+			switch {
+			case age >= zombieConnThreshold:
+				logger.Warnf("client-api", "replacing stale v2 connection %d for client %s (no frames for %s): serving new connection from %s", oldConn.ID, uuid, age.Round(time.Second), c.ClientIP())
+				// Closing wakes the old handler, whose conditional registry
+				// cleanup only removes a connection that is still the registered
+				// one, so the registration below survives it.
+				go oldConn.Close()
+			case age >= duplicateFreshWindow && !agent_runtime.ProbeAlive(oldConn, duplicateProbeWait):
+				logger.Warnf("client-api", "taking over unresponsive v2 connection %d for client %s (no pong within %s, last frame %s ago): serving new connection from %s", oldConn.ID, uuid, duplicateProbeWait, age.Round(time.Second), c.ClientIP())
+				go oldConn.Close()
+			default:
+				rejectDuplicateConnection(uuid, oldConn, conn, c)
+				rejected = true
+			}
+		}
+		if rejected {
 			return
 		}
-		age := time.Since(oldConn.LastActive())
-		switch {
-		case age >= zombieConnThreshold:
-			logger.Warnf("client-api", "replacing stale v2 connection %d for client %s (no frames for %s): serving new connection from %s", oldConn.ID, uuid, age.Round(time.Second), c.ClientIP())
-			// Closing wakes the old handler, whose conditional registry
-			// cleanup only removes a connection that is still the registered
-			// one, so the registration below survives it.
-			go oldConn.Close()
-		case age >= duplicateFreshWindow && !agent_runtime.ProbeAlive(oldConn, duplicateProbeWait):
-			logger.Warnf("client-api", "taking over unresponsive v2 connection %d for client %s (no pong within %s, last frame %s ago): serving new connection from %s", oldConn.ID, uuid, duplicateProbeWait, age.Round(time.Second), c.ClientIP())
-			go oldConn.Close()
-		default:
-			rejectDuplicateConnection(uuid, oldConn, conn, c)
-			rejected = true
-		}
+		agent_runtime.SetConnectedClients(uuid, conn)
+		agent_runtime.MarkV2Client(uuid)
 	})
 	if rejected {
 		return
 	}
-	agent_runtime.SetConnectedClients(uuid, conn)
-	agent_runtime.MarkV2Client(uuid)
 	go notifierOnline(uuid, conn.ID)
 	defer func() {
 		agent_runtime.DeleteClientConditionally(uuid, conn)

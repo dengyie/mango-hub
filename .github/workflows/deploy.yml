@@ -105,13 +105,15 @@ jobs:
         run: |
           mkdir -p bin
           BUILD_SHA=$(git rev-parse --short=7 HEAD)
-          echo "Building commit $BUILD_SHA in alpine musl container on runner..."
+          VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.1")
+          VERSION=${VERSION#v}
+          echo "Building commit $BUILD_SHA (version $VERSION) in alpine musl container on runner..."
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/src" \
             -w /src/hub \
             -e CGO_ENABLED=1 \
             golang:alpine \
-            sh -c "apk add --no-cache gcc musl-dev && go build -ldflags '-s -w -linkmode external -extldflags \"-static\" -X github.com/dengyie/mangohub/hub/utils.VersionHash=$BUILD_SHA' -trimpath -o /src/bin/mangohub ."
+            sh -c "apk add --no-cache gcc musl-dev && go build -ldflags '-s -w -linkmode external -extldflags \"-static\" -X github.com/dengyie/mangohub/hub/utils.CurrentVersion=$VERSION -X github.com/dengyie/mangohub/hub/utils.VersionHash=$BUILD_SHA' -trimpath -o /src/bin/mangohub ."
           ls -lh bin/mangohub
           file bin/mangohub
 

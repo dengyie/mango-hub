@@ -39,6 +39,8 @@ type MaxMindGeoIPService struct {
 	dbFilePath string
 	// mu 用于保护对 maxMindDBReader 的并发访问，确保线程安全。
 	mu sync.RWMutex
+	// updateMu 序列化 UpdateDatabase 调用（下载期间不持有 mu，只互斥更新本身）。
+	updateMu sync.Mutex
 }
 
 // Name 返回服务的名称。
@@ -132,10 +134,17 @@ func (s *MaxMindGeoIPService) GetGeoInfo(ip net.IP) (*GeoInfo, error) {
 
 // UpdateDatabase 实现了 GeoIPService 接口的 UpdateDatabase 方法。
 // 它会下载最新的 GeoLite2-Country.mmdb 文件并重新加载数据库。
+// updateMu 序列化并发调用：固定 tmp 路径 + rename 原子替换意味着两个并发
+// 更新会互相截断对方的临时文件，可能把半截文件安装为在线库并使 reader 置空
+// （GetGeoInfo 全部报错直到下次成功更新）。
 func (s *MaxMindGeoIPService) UpdateDatabase() error {
-	// Download WITHOUT holding the write lock: the old version held s.mu
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
+
+	// Download WITHOUT holding the write lock s.mu: the old version held it
 	// across an unbounded http.Get, so a stalled download blocked every
-	// GetGeoInfo call (node basic-info ingestion) indefinitely.
+	// GetGeoInfo call (node basic-info ingestion) indefinitely. GetGeoInfo
+	// keeps serving the current reader while this update runs.
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Get(GeoIpUrl) // GeoIpUrl 是预定义的 MaxMind 数据库下载地址
 	if err != nil {
