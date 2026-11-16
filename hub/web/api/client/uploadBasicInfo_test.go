@@ -166,3 +166,73 @@ func TestV2SSHTicketResultHandling(t *testing.T) {
 		t.Fatalf("expected error code -32003 for mismatched target client, got: %+v", respSpoof.Error)
 	}
 }
+
+// An agent token must not be able to mass-assign admin-owned columns through
+// its basic-info report: hidden, token, name, group, price etc. stay under
+// admin control, and unknown keys are dropped instead of failing the write.
+func TestV2BasicInfoWhitelistsAgentColumns(t *testing.T) {
+	flags.DatabaseType = "sqlite"
+	flags.DatabaseFile = "file:v2_basic_info_whitelist?mode=memory&cache=shared"
+	db := dbcore.GetDBInstance()
+
+	clientUUID := "client-v2-whitelist"
+	now := time.Now().UTC()
+	if err := db.Create(&models.Client{
+		UUID:      clientUUID,
+		Token:     "token-v2-whitelist",
+		Name:      "admin_name",
+		Hidden:    true,
+		Price:     9.9,
+		Weight:    3,
+		Group:     "admin_group",
+		CreatedAt: now,
+		UpdatedAt: now,
+	}).Error; err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	payload := map[string]interface{}{
+		// Legitimate hardware/OS fields — must be applied.
+		"cpu_name":  "Intel i9",
+		"arch":      "amd64",
+		"os":        "Ubuntu 24.04",
+		"mem_total": int64(8 << 30),
+		"version":   "test-agent",
+		// Admin-owned / dangerous columns — must be dropped.
+		"hidden":     false,
+		"token":      "attacker-token",
+		"name":       "spoofed_name",
+		"group":      "spoofed_group",
+		"price":      0.0,
+		"weight":     0,
+		"region":     "XX",
+		"not_a_column": "junk",
+	}
+
+	if err := saveClientBasicInfo(payload, clientUUID, "203.0.113.10"); err != nil {
+		t.Fatalf("save basic info: %v", err)
+	}
+
+	var client models.Client
+	if err := db.Where("uuid = ?", clientUUID).First(&client).Error; err != nil {
+		t.Fatalf("load client: %v", err)
+	}
+	if client.CpuName != "Intel i9" || client.Arch != "amd64" || client.OS != "Ubuntu 24.04" {
+		t.Fatalf("legitimate basic-info fields were not applied: %+v", client)
+	}
+	if !client.Hidden {
+		t.Fatal("agent un-hid its own node via basic-info mass assignment")
+	}
+	if client.Token != "token-v2-whitelist" {
+		t.Fatalf("agent rotated its own token: %q", client.Token)
+	}
+	if client.Name != "admin_name" || client.Group != "admin_group" {
+		t.Fatalf("agent spoofed identity fields: name=%q group=%q", client.Name, client.Group)
+	}
+	if client.Price != 9.9 || client.Weight != 3 {
+		t.Fatalf("agent overwrote price/weight: price=%v weight=%v", client.Price, client.Weight)
+	}
+	if client.Region == "XX" {
+		t.Fatal("agent forged its own region flag")
+	}
+}

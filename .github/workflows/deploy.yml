@@ -7,6 +7,12 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
 
+# Single-VPS deploy: overlapping runs fight over docker stop/rm/tag and can
+# stamp the just-replaced container as the rollback image.
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
 jobs:
   agent-check:
     name: Agent Lint & Build
@@ -200,3 +206,9 @@ jobs:
             fi
 
             echo "=== [5/5] Deployment completed successfully! ==="
+
+            echo "=== Pruning dangling images ==="
+            # Every deploy builds a fresh mangohub:latest and leaves the old
+            # layers dangling; without pruning the small Azure VPS disk slowly
+            # fills. The rollback tag keeps its image safe from this prune.
+            sudo docker image prune -f || true

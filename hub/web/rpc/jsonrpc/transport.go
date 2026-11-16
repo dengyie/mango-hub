@@ -16,6 +16,21 @@ import (
 )
 
 // OnRpcRequest 是 /api/rpc2 的统一入口：GET 升级为 WebSocket，POST 处理单条/批量 JSON-RPC。
+
+// publicRPCWSReadLimit / publicRPCWSIdleTimeout bound the anonymous
+// /api/rpc2 WebSocket: gorilla buffers each whole frame before dispatch, and
+// the read loop had no deadline, so a single oversized frame was a remote
+// OOM and a silent client pinned a goroutine + connection indefinitely.
+const (
+	publicRPCWSReadLimit   = 1 << 20 // 1 MiB per frame
+	publicRPCWSIdleTimeout = 5 * time.Minute
+
+	// maxRPCPostBodyBytes bounds the POST body: 4 MiB comfortably fits every
+	// admin RPC call (the largest bodies are backup archives, which upload
+	// through the chunked /api/admin/upload path instead).
+	maxRPCPostBodyBytes = 4 << 20
+)
+
 func OnRpcRequest(c *gin.Context) {
 	// GET -> WebSocket
 	if c.Request.Method == http.MethodGet {
@@ -95,9 +110,13 @@ func serveWebSocket(c *gin.Context) {
 		return
 	}
 	defer conn.Close()
+	conn.SetReadLimit(publicRPCWSReadLimit)
 
 	meta := buildContextMeta(c)
 	for {
+		// Idle deadline: a viewer that stops sending cannot pin this
+		// goroutine and connection forever.
+		_ = conn.SetReadDeadline(time.Now().Add(publicRPCWSIdleTimeout))
 		var req rpc.JsonRpcRequest
 		if err := conn.ReadJSON(&req); err != nil {
 			var se *json.SyntaxError
@@ -119,7 +138,7 @@ func serveWebSocket(c *gin.Context) {
 }
 
 func servePost(c *gin.Context) {
-	body, err := io.ReadAll(c.Request.Body)
+	body, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, maxRPCPostBodyBytes))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, rpc.ErrorResponse(nil, rpc.ParseError, "read body error", err.Error()))
 		return

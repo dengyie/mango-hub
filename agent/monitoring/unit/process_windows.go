@@ -25,6 +25,8 @@ func processCountWindows() (count int) {
 
 	// Get EnumProcesses function
 	enumProcesses, err := syscall.GetProcAddress(kernel32, "K32EnumProcesses")
+	// maxProcessEnumSize bounds the retry loop below; real boxes stay far below it.
+	const maxProcessEnumSize = 1 << 18
 	if err != nil {
 		return 0
 	}

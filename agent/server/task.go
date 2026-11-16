@@ -49,6 +49,43 @@ func runTaskCommand(command string) (string, int) {
 	return runTaskCommandWithTimeout(command, 0)
 }
 
+
+// taskOutputLimit caps the combined stdout/stderr captured per command.
+const taskOutputLimit = 1 << 20 // 1 MiB
+
+// limitedBuffer is an io.Writer that keeps at most limit bytes and records
+// whether anything was dropped, so String() can append an honest truncation
+// marker instead of silently cutting mid-line.
+type limitedBuffer struct {
+	buf      bytes.Buffer
+	limit    int
+	truncate bool
+}
+
+func (b *limitedBuffer) Write(p []byte) (int, error) {
+	if b.buf.Len() >= b.limit {
+		b.truncate = true
+		return len(p), nil // swallow the rest
+	}
+	remaining := b.limit - b.buf.Len()
+	if len(p) > remaining {
+		b.buf.Write(p[:remaining])
+		b.truncate = true
+		return len(p), nil
+	}
+	return b.buf.Write(p)
+}
+
+func (b *limitedBuffer) Len() int { return b.buf.Len() }
+
+func (b *limitedBuffer) String() string {
+	out := b.buf.String()
+	if b.truncate {
+		out += "\n...[output truncated at 1MiB]"
+	}
+	return out
+}
+
 func runTaskCommandWithTimeout(command string, timeout time.Duration) (string, int) {
 	ctx := context.Background()
 	cancel := func() {}
@@ -63,9 +100,14 @@ func runTaskCommandWithTimeout(command string, timeout time.Duration) (string, i
 	}
 	defer cleanup()
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	// Cap the captured output: the buffers used to grow unbounded, so one
+	// chatty command (cat huge.log, a verbose build) could OOM a 2-4GB node
+	// before uploadTaskResult ever saw the payload. Combined output is
+	// truncated at taskOutputLimit with an explicit marker.
+	stdout := &limitedBuffer{limit: taskOutputLimit}
+	stderr := &limitedBuffer{limit: taskOutputLimit}
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 
 	err = cmd.Run()
 

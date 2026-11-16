@@ -3,7 +3,12 @@ package rpc
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 )
+
+// maxRPCBatchSize caps JSON-RPC batch arrays; each entry is dispatched
+// serially, so an unbounded batch is a CPU amplification vector.
+const maxRPCBatchSize = 32
 
 // ParseRequest 解析单个 JSON-RPC 请求。返回请求与错误（解析层面）。
 func ParseRequest(data []byte) (*JsonRpcRequest, *JsonRpcError) {
@@ -42,6 +47,11 @@ func ParseRequests(data []byte) ([]*JsonRpcRequest, *JsonRpcError) {
 		}
 		if len(arr) == 0 {
 			return nil, &JsonRpcError{Code: InvalidRequest, Message: "empty batch"}
+		}
+		// Cap the batch: every entry runs serially through dispatch, so an
+		// unbounded anonymous batch array is a CPU amplification vector.
+		if len(arr) > maxRPCBatchSize {
+			return nil, &JsonRpcError{Code: InvalidRequest, Message: "batch too large", Data: fmt.Sprintf("max %d requests per batch", maxRPCBatchSize)}
 		}
 		res := make([]*JsonRpcRequest, 0, len(arr))
 		for i := range arr {

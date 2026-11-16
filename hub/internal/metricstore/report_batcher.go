@@ -35,7 +35,13 @@ const (
 	reportBatchInterval     = 3 * time.Second
 	reportBatchQueueSize    = 4096
 	pingBatchMaxRecords     = 512
+	reportBatchMaxRecords   = 512
 	reportBatchWriteTimeout = 10 * time.Second
+
+	// reportQueueFullLogInterval throttles the queue-full warning: a stalled
+	// write pipeline drops one live sample per node per ~3s tick, which would
+	// otherwise flood the log while saying nothing new.
+	reportQueueFullLogInterval = time.Minute
 )
 
 var (
@@ -48,6 +54,33 @@ var (
 	ErrReportBatchStopped   = errors.New("metric report batcher is stopped")
 	ErrPingBatchQueueFull   = errors.New("ping batch queue is full")
 )
+
+// reportQueueFullLogState throttles the queue-full warning to one line per
+// interval with a suppressed-count suffix, mirroring the duplicate-rejection
+// log throttle in web/api/client.
+var reportQueueFullLogState struct {
+	mu         sync.Mutex
+	lastWarn   time.Time
+	suppressed int
+}
+
+func logQueueFull(kind string) {
+	reportQueueFullLogState.mu.Lock()
+	defer reportQueueFullLogState.mu.Unlock()
+	now := time.Now()
+	if !reportQueueFullLogState.lastWarn.IsZero() && now.Sub(reportQueueFullLogState.lastWarn) < reportQueueFullLogInterval {
+		reportQueueFullLogState.suppressed++
+		return
+	}
+	suppressed := reportQueueFullLogState.suppressed
+	reportQueueFullLogState.lastWarn = now
+	reportQueueFullLogState.suppressed = 0
+	if suppressed > 0 {
+		logger.Warnf("metricstore", "%s queue is full; dropping live samples until the write pipeline recovers (+%d more dropped within %s)", kind, suppressed, reportQueueFullLogInterval)
+		return
+	}
+	logger.Warnf("metricstore", "%s queue is full; dropping live samples until the write pipeline recovers", kind)
+}
 
 type reportBatchRequest struct {
 	ctx  context.Context
@@ -167,6 +200,9 @@ func WriteReport(ctx context.Context, report v2.Report) (v2.Report, error) {
 	reportBatcherMu.Unlock()
 	if worker != nil {
 		if err := worker.enqueue(ctx, report); err != nil {
+			if errors.Is(err, ErrReportBatchQueueFull) {
+				logQueueFull("metric report batch")
+			}
 			return v2.Report{}, err
 		}
 		return report, nil
@@ -300,7 +336,14 @@ func writePendingReports(ctx context.Context, pending *[]v2.Report) error {
 	if len(*pending) == 0 {
 		return nil
 	}
-	batchSize := len(*pending)
+	// Cap every chunk like the ping writer does. The backlog from a failed
+	// flush is retried on the next tick; without a cap the whole backlog (up
+	// to reportBatchQueueSize ≈ 6.6 min of fleet reports) went through ONE
+	// WriteBatch under one 10s deadline — a giant transaction that is more
+	// likely to blow the deadline again, turning one stall into a repeating
+	// failure loop. Smaller chunks also let the flush deadline and the shared
+	// locks breathe between chunks.
+	batchSize := reportBatchMaxRecords
 	for len(*pending) > 0 {
 		if batchSize > len(*pending) {
 			batchSize = len(*pending)
@@ -361,8 +404,16 @@ func writeReportBatch(ctx context.Context, reports []v2.Report) ([]v2.Report, er
 			state.mu.Unlock()
 		}
 		if !values.initialized {
+			// Keep initialized=false when the restore fails: the state below
+			// (hasUp/totalUp from the current report) is a usable baseline for
+			// delta computation, but persisting initialized=true would freeze
+			// this batch's lost delta forever. Retrying the restore on the
+			// next batch re-reads the true previous counter and recovers the
+			// traffic delta once the read succeeds.
+			restoreFailed := false
 			totalUp, hasUp, err := latestReportCounter(ctx, s, MetricNetTotalUp, report.UUID, report.UpdatedAt)
 			if err != nil {
+				restoreFailed = true
 				logger.Errorf("metricstore", "failed to restore previous upload counter for %s: %v", report.UUID, err)
 			} else {
 				values.totalUp = totalUp
@@ -370,12 +421,15 @@ func writeReportBatch(ctx context.Context, reports []v2.Report) ([]v2.Report, er
 			}
 			totalDown, hasDown, err := latestReportCounter(ctx, s, MetricNetTotalDown, report.UUID, report.UpdatedAt)
 			if err != nil {
+				restoreFailed = true
 				logger.Errorf("metricstore", "failed to restore previous download counter for %s: %v", report.UUID, err)
 			} else {
 				values.totalDown = totalDown
 				values.hasDown = hasDown
 			}
-			values.initialized = true
+			if !restoreFailed {
+				values.initialized = true
+			}
 		}
 
 		if !values.timestamp.IsZero() && !report.UpdatedAt.After(values.timestamp) {
@@ -399,9 +453,10 @@ func writeReportBatch(ctx context.Context, reports []v2.Report) ([]v2.Report, er
 		prepared[i] = report
 	}
 
-	// Persist the restored per-report traffic state even if the write below
-	// fails, so a slow or failing database does not re-issue the previous-
-	// counter queries on every batch.
+	// Persist the per-report traffic state even if the write below fails, so
+	// a slow database does not re-issue the previous-counter queries on every
+	// batch — except where the restore itself failed: those states keep
+	// initialized=false above and retry the lookup next batch.
 	for state, values := range pendingStates {
 		state.mu.Lock()
 		state.reportTrafficValues = values

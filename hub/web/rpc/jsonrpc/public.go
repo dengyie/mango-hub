@@ -148,6 +148,9 @@ var validRecordsLoadTypes = map[string]bool{
 	"gpu": true, "mining": true,
 }
 
+// maxPublicRecordsHours bounds the guest-facing records window.
+const maxPublicRecordsHours = 24 * 30
+
 func publicGetRecordsByUUID(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
 	var params struct {
 		UUID     string `json:"uuid"`
@@ -169,6 +172,15 @@ func publicGetRecordsByUUID(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 	hoursInt, err := strconv.Atoi(hours)
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid hours parameter", nil)
+	}
+	// Clamp the window: hours reached the range query unbounded, so a guest
+	// could request 876000h and force a full-history scan plus a multi-MB
+	// response, repeatably and anonymously.
+	if hoursInt < 1 {
+		hoursInt = 1
+	}
+	if hoursInt > maxPublicRecordsHours {
+		hoursInt = maxPublicRecordsHours
 	}
 	if !validRecordsLoadTypes[params.LoadType] {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid load_type parameter", nil)
@@ -257,11 +269,30 @@ func maskMiningRecordRigs(records []metricstore.MiningRecord) {
 	}
 }
 
-func publicGetPublicPingTasks(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+// filterHiddenPingClients drops hidden-node UUIDs from a ping task's client
+// list for non-admin callers. Ping task listings were the one guest exit that
+// still embedded raw task.Clients, letting visitors enumerate UUIDs of nodes
+// hidden from the public dashboard — the keying parameter of every node API.
+func filterHiddenPingClients(clients []string, visibleToCaller bool) []string {
+	if visibleToCaller {
+		return clients
+	}
+	out := make([]string, 0, len(clients))
+	for _, uuid := range clients {
+		if isHiddenClient(uuid) {
+			continue
+		}
+		out = append(out, uuid)
+	}
+	return out
+}
+
+func publicGetPublicPingTasks(ctx context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
 	pingTasks, err := tasks.GetAllPingTasks()
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, err.Error(), nil)
 	}
+	visibleToCaller := isLoginFromCtx(ctx)
 	type publicPingTask struct {
 		Id        uint     `json:"id"`
 		Weight    int      `json:"weight"`
@@ -277,7 +308,7 @@ func publicGetPublicPingTasks(_ context.Context, _ *rpc.JsonRpcRequest) (any, *r
 			Id:        task.Id,
 			Weight:    task.Weight,
 			Name:      task.Name,
-			Clients:   task.Clients,
+			Clients:   filterHiddenPingClients(task.Clients, visibleToCaller),
 			DefaultOn: task.DefaultOn,
 			Type:      task.Type,
 			Interval:  task.Interval,
@@ -485,7 +516,7 @@ func publicGetPingRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 				"max": maxLatency, "avg": avgLatency, "total": totalCount,
 			}
 			if params.UUID == "" && taskId != -1 {
-				taskInfo["clients"] = t.Clients
+				taskInfo["clients"] = filterHiddenPingClients(t.Clients, isLogin)
 			}
 			tasksList = append(tasksList, taskInfo)
 		}

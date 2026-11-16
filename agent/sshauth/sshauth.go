@@ -160,12 +160,18 @@ func authorizeKeyAtPath(authPath, ticketID, pubKey, targetUser string, expiresAt
 	// 先清理可能存在的同 ticket_id 旧租约（保证幂等性）
 	_ = removeKeyByTicketLocked(authPath, ticketID, targetUser)
 
-	// 读取现有内容
+	// 读取现有内容。bufio.Scanner 默认 64KB 单行上限：一行超限（超长注释 /
+	// forced-command 选项）会静默截断读取，随后的原子重写会丢掉之后的所有行
+	// —— 包括同文件里其他用户的公钥。放宽缓冲并在读取错误时中止重写。
 	var lines []string
 	if fileBytes, err := os.ReadFile(authPath); err == nil {
 		scanner := bufio.NewScanner(strings.NewReader(string(fileBytes)))
+		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 		for scanner.Scan() {
 			lines = append(lines, scanner.Text())
+		}
+		if err := scanner.Err(); err != nil {
+			return fmt.Errorf("read %s failed, aborting authorized_keys rewrite: %w", authPath, err)
 		}
 	}
 

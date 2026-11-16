@@ -4,12 +4,14 @@ package monitoring
 // Original License: MIT
 
 import (
+	"context"
 	"encoding/xml"
 	"errors"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -52,8 +54,16 @@ func (smi *NvidiaSMI) Start() error {
 	return nil
 }
 
+// nvidiaSMIPollTimeout bounds the full XML query on the per-report path.
+// GenerateReport() runs synchronously inside the WebSocket select loop, so a
+// hung nvidia-smi (driver TDR / GPU drop) used to block reports AND
+// heartbeats and took the whole node offline.
+const nvidiaSMIPollTimeout = 5 * time.Second
+
 func (smi *NvidiaSMI) pollNvidiaSMI() []byte {
-	cmd := exec.Command(smi.BinPath, "-q", "-x")
+	ctx, cancel := context.WithTimeout(context.Background(), nvidiaSMIPollTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, smi.BinPath, "-q", "-x")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil

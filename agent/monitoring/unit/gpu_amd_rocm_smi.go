@@ -4,12 +4,14 @@ package monitoring
 // Original License: MIT
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type ROCmSMI struct {
@@ -63,8 +65,15 @@ func (rsmi *ROCmSMI) Start() error {
 	return nil
 }
 
+// rocmSMIPollTimeout bounds the --showallinfo query on the per-report path
+// (same reasoning as nvidiaSMIPollTimeout: a hung collector blocks the whole
+// report loop).
+const rocmSMIPollTimeout = 5 * time.Second
+
 func (rsmi *ROCmSMI) pollROCmSMI() []byte {
-	cmd := exec.Command(rsmi.BinPath, "--showallinfo", "--json")
+	ctx, cancel := context.WithTimeout(context.Background(), rocmSMIPollTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, rsmi.BinPath, "--showallinfo", "--json")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil

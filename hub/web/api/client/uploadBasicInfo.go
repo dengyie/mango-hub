@@ -20,7 +20,38 @@ func getClientIPType(ip net.IP) int {
 	}
 }
 
-func saveClientBasicInfo(info map[string]interface{}, uuid string, fallbackIP string) error {
+// agentBasicInfoColumns is the allowlist of columns an agent may write via
+// its basic-info report. The payload used to flow into GORM Updates(map)
+// verbatim, so a client token could mass-assign admin-owned columns — flip
+// its own hidden flag, rotate its token, spoof name/group/price/region and
+// impersonate another node in the public list. Anything outside this set is
+// dropped; admins set those columns through the admin API instead.
+var agentBasicInfoColumns = map[string]struct{}{
+	"cpu_name":           {},
+	"cpu_cores":          {},
+	"cpu_physical_cores": {},
+	"arch":               {},
+	"os":                 {},
+	"kernel_version":     {},
+	"ipv4":               {},
+	"ipv6":               {},
+	"mem_total":          {},
+	"swap_total":         {},
+	"disk_total":         {},
+	"gpu_name":           {},
+	"virtualization":     {},
+	"version":            {},
+	"miner_configured":   {},
+	"miner_controllable": {},
+}
+
+func saveClientBasicInfo(rawInfo map[string]interface{}, uuid string, fallbackIP string) error {
+	info := make(map[string]interface{}, len(rawInfo)+2)
+	for key, value := range rawInfo {
+		if _, ok := agentBasicInfoColumns[key]; ok {
+			info[key] = value
+		}
+	}
 	info["uuid"] = uuid
 	applyFallbackClientIP(info, fallbackIP)
 	appendClientRegionFromGeoIP(info)

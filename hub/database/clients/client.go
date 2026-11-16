@@ -342,6 +342,23 @@ func GetAllClientBasicInfo() (clients []models.Client, err error) {
 	return res, nil
 }
 
+// RenewClientExpiredAt conditionally extends a client's expiry in one
+// compare-and-swap UPDATE: the row is only written when expired_at still
+// holds the value the caller read. CheckAndAutoRenewal runs concurrently
+// from the connect path and the daily expire job, and both used to blind
+// SaveClient off their own snapshot — a node reconnecting exactly as the
+// scheduled job fired extended a monthly node by two billing cycles.
+func RenewClientExpiredAt(clientUUID string, expectedExpire, newExpire time.Time) (bool, error) {
+	db := dbcore.GetDBInstance()
+	res := db.Model(&models.Client{}).
+		Where("uuid = ? AND expired_at = ?", clientUUID, expectedExpire.UTC()).
+		Update("expired_at", newExpire.UTC())
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
+}
+
 func SaveClient(updates map[string]interface{}) error {
 	db := dbcore.GetDBInstance()
 	clientUUID, ok := updates["uuid"].(string)

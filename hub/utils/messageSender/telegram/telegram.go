@@ -6,9 +6,17 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/dengyie/mangohub/hub/utils/messageSender/factory"
+	"github.com/dengyie/mangohub/hub/utils/messageSender/outboundhttp"
 )
+
+// senderHTTPClient bounds every Telegram call: the previous http.PostForm on
+// http.DefaultClient had no response-header timeout, so one hung endpoint
+// leaked a stuck goroutine per notification (amplified by the 3-attempt
+// retry loop in sender.go) and could stall the daily expire check for hours.
+var senderHTTPClient = outboundhttp.NewClient(30 * time.Second)
 
 type TelegramSender struct {
 	Addition
@@ -54,7 +62,7 @@ func (t *TelegramSender) SendTextMessage(message, title string) error {
 		data.Set("message_thread_id", t.Addition.MessageThreadID)
 	}
 
-	resp, err := http.PostForm(endpoint, data)
+	resp, err := senderHTTPClient.PostForm(endpoint, data)
 	if err != nil {
 		return fmt.Errorf("failed to send message: %v", err)
 	}

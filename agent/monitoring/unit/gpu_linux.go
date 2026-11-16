@@ -5,11 +5,13 @@ package monitoring
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 func GpuName() string {
@@ -23,12 +25,16 @@ func GpuName() string {
 	return "None"
 }
 
-func getFromLspci() string {
-	out, err := exec.Command("lspci").Output()
-	if err != nil {
-		return "None"
-	}
-	excludePatterns := []string{
+// lspciTimeout bounds the lspci spawn: it used to run without a deadline on
+// every report on AMD nodes without rocm-smi.
+const lspciTimeout = 5 * time.Second
+
+// lspciExcludePatterns are precompiled once — the old code recompiled six
+// regexes for every lspci line on every report.
+var lspciExcludePatterns = compileLspciExcludePatterns()
+
+func compileLspciExcludePatterns() []*regexp.Regexp {
+	patterns := []string{
 		"^1111",                             // 1111 (rev 02)
 		`(?i)^cirrus logic (cl[-\s]?)?gd 5`, // CL-GD 系列 1990 年代中期的产物, 现常用于虚拟机
 		"(?i)virtio",
@@ -36,14 +42,28 @@ func getFromLspci() string {
 		`(?i)qxl`, // SPICE 虚拟显卡
 		`(?i)hyper-v`,
 	}
+	compiled := make([]*regexp.Regexp, 0, len(patterns))
+	for _, pattern := range patterns {
+		compiled = append(compiled, regexp.MustCompile(pattern))
+	}
+	return compiled
+}
+
+func getFromLspci() string {
+	ctx, cancel := context.WithTimeout(context.Background(), lspciTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "lspci").Output()
+	if err != nil {
+		return "None"
+	}
 
 	lines := strings.Split(string(out), "\n")
 
 	priorityVendors := []string{"nvidia", "amd", "radeon", "intel", "arc", "snap", "qualcomm", "snapdragon"}
 
 	isExcludedGPUName := func(name string) bool {
-		for _, pattern := range excludePatterns {
-			if matched, _ := regexp.MatchString(pattern, name); matched {
+		for _, pattern := range lspciExcludePatterns {
+			if pattern.MatchString(name) {
 				return true
 			}
 		}

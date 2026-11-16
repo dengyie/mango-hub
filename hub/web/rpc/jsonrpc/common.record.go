@@ -376,7 +376,9 @@ func getRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpc
 				"p99_p50_ratio": ratio,
 			}
 			if params.UUID == "" && taskId != -1 { // retain existing behavior of exposing clients only when filtering by task
-				info["clients"] = t.Clients
+				// Hidden-node UUIDs stay excluded for non-admin callers,
+				// matching the record-level hidden filtering above.
+				info["clients"] = filterHiddenPingClients(t.Clients, isAdmin)
 			}
 			toList = append(toList, info)
 		}

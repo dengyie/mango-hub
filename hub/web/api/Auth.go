@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dengyie/mangohub/hub/database/accounts"
@@ -43,7 +44,18 @@ func IdentityMiddleware() gin.HandlerFunc {
 		case rpc.PrincipalUser:
 			if session, err := c.Cookie("session_token"); err == nil && session != "" {
 				c.Set("session", session)
-				accounts.UpdateLatest(session, c.Request.UserAgent(), c.ClientIP())
+				// Throttle the latest-online write: every session-authenticated
+				// request used to UPDATE sessions unconditionally — each 2-4s
+				// dashboard poll and every static asset took the single SQLite
+				// writer slot and contended with the fleet's report writes.
+				// The 60s in-memory throttle keeps latest_online fresh enough
+				// for the admin panel while cutting the write rate ~100x.
+				if sessionSeenRecently(session) {
+					// skip
+				} else {
+					markSessionSeen(session)
+					accounts.UpdateLatest(session, c.Request.UserAgent(), c.ClientIP())
+				}
 			}
 			c.Set("uuid", p.UserUUID)
 		case rpc.PrincipalAgent:
@@ -223,3 +235,41 @@ func isApiKeyValid(apiKey string) bool {
 	}
 	return apiKey == "Bearer "+apiKeyConfig
 }
+
+// sessionLastSeen throttles sessions.UpdateLatest writes from
+// IdentityMiddleware. Entries are capped and lazily expired so the map never
+// grows unbounded across session churn; losing an entry only costs one extra
+// UPDATE on the next request.
+var (
+	sessionSeenMu      sync.Mutex
+	sessionSeenTimes   = make(map[string]time.Time)
+	sessionSeenMaxSize = 4096
+)
+
+func sessionSeenRecently(session string) bool {
+	sessionSeenMu.Lock()
+	defer sessionSeenMu.Unlock()
+	last, ok := sessionSeenTimes[session]
+	return ok && time.Since(last) < sessionLatestWriteInterval
+}
+
+func markSessionSeen(session string) {
+	sessionSeenMu.Lock()
+	defer sessionSeenMu.Unlock()
+	if len(sessionSeenTimes) >= sessionSeenMaxSize {
+		// Drop expired entries first; if still full, clear everything — the
+		// map is a throttle cache, correctness never depends on it.
+		now := time.Now()
+		for key, last := range sessionSeenTimes {
+			if now.Sub(last) >= sessionLatestWriteInterval {
+				delete(sessionSeenTimes, key)
+			}
+		}
+		if len(sessionSeenTimes) >= sessionSeenMaxSize {
+			sessionSeenTimes = make(map[string]time.Time)
+		}
+	}
+	sessionSeenTimes[session] = time.Now()
+}
+
+const sessionLatestWriteInterval = 60 * time.Second

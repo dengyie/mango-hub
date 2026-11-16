@@ -20,7 +20,13 @@ func LoadProvider(name string, addition string) error {
 	if err != nil {
 		return fmt.Errorf("failed to load config for provider %s: %w", name, err)
 	}
-	provider.Init()
+	// Propagate Init failures instead of silently installing a broken
+	// provider: a misconfigured JS sender used to pass the load step and then
+	// fail at send time on every subsequent notification.
+	if err := provider.Init(); err != nil {
+		_ = provider.Destroy()
+		return fmt.Errorf("failed to initialize provider %s: %w", name, err)
+	}
 	if currentProvider != nil {
 		currentProvider.Destroy()
 	}

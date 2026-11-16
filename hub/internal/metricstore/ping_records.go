@@ -2,6 +2,7 @@ package metricstore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -21,7 +22,13 @@ func WritePingRecord(ctx context.Context, rec models.PingRecord) error {
 	worker := reportBatcher
 	reportBatcherMu.Unlock()
 	if worker != nil {
-		return worker.enqueuePing(ctx, rec)
+		if err := worker.enqueuePing(ctx, rec); err != nil {
+			if errors.Is(err, ErrPingBatchQueueFull) {
+				logQueueFull("ping batch")
+			}
+			return err
+		}
+		return nil
 	}
 	return writePingRecords(ctx, []models.PingRecord{rec})
 }

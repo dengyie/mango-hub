@@ -475,10 +475,13 @@ func getMe(ctx context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) 
 		resp.SSOId = "client"
 		resp.SSOType = "client"
 		resp.Username = "client"
-		resp.UUID = meta.ClientToken
-		client, err := clients.GetClientUUIDByToken(meta.ClientToken)
-		if err != nil {
-			resp.UUID = client
+		// Return the node's UUID, not an echo of the raw token; the original
+		// inverted error check discarded the lookup result on success and
+		// re-transmitted the token instead.
+		if uuid, err := clients.GetClientUUIDByToken(meta.ClientToken); err == nil && uuid != "" {
+			resp.UUID = uuid
+		} else {
+			resp.UUID = "client"
 		}
 		return resp, nil
 	default:

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"time"
 	"os"
 	"path/filepath" // 新增导入，用于处理文件路径
 	"sync"
@@ -132,9 +133,11 @@ func (s *MaxMindGeoIPService) GetGeoInfo(ip net.IP) (*GeoInfo, error) {
 // UpdateDatabase 实现了 GeoIPService 接口的 UpdateDatabase 方法。
 // 它会下载最新的 GeoLite2-Country.mmdb 文件并重新加载数据库。
 func (s *MaxMindGeoIPService) UpdateDatabase() error {
-	s.mu.Lock() // 获取写锁，确保更新过程的互斥性
-
-	resp, err := http.Get(GeoIpUrl) // GeoIpUrl 是预定义的 MaxMind 数据库下载地址
+	// Download WITHOUT holding the write lock: the old version held s.mu
+	// across an unbounded http.Get, so a stalled download blocked every
+	// GetGeoInfo call (node basic-info ingestion) indefinitely.
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Get(GeoIpUrl) // GeoIpUrl 是预定义的 MaxMind 数据库下载地址
 	if err != nil {
 		return fmt.Errorf("failed to initiate MaxMind database download: %w", err)
 	}
@@ -149,17 +152,39 @@ func (s *MaxMindGeoIPService) UpdateDatabase() error {
 		return fmt.Errorf("failed to create data directory for MaxMind database update: %w", err)
 	}
 
-	out, err := os.Create(s.dbFilePath) // 创建或覆盖本地数据库文件
+	// Write to a temp file, verify it parses, then atomically rename over the
+	// live database: the old in-place os.Create left a truncated mmdb on a
+	// mid-transfer failure, and since the file exists on next startup no
+	// re-download happens — GeoIP stayed permanently broken until manual
+	// deletion.
+	tmpFile := s.dbFilePath + ".tmp"
+	out, err := os.Create(tmpFile)
 	if err != nil {
-		return fmt.Errorf("failed to create MaxMind database file at %s: %w", s.dbFilePath, err)
+		return fmt.Errorf("failed to create temp MaxMind database file at %s: %w", tmpFile, err)
 	}
-	defer out.Close()
-
-	_, err = io.Copy(out, resp.Body) // 将下载内容写入文件
-	if err != nil {
-		return fmt.Errorf("failed to write MaxMind database file: %w", err)
+	_, copyErr := io.Copy(out, resp.Body)
+	closeErr := out.Close()
+	if copyErr != nil {
+		_ = os.Remove(tmpFile)
+		return fmt.Errorf("failed to write MaxMind database file: %w", copyErr)
 	}
-	s.mu.Unlock() // initialize 方法需要在解锁后调用，以避免死锁
+	if closeErr != nil {
+		_ = os.Remove(tmpFile)
+		return fmt.Errorf("failed to finalize MaxMind database file: %w", closeErr)
+	}
+	probe, probeErr := maxminddb.Open(tmpFile)
+	if probeErr != nil {
+		_ = os.Remove(tmpFile)
+		return fmt.Errorf("downloaded MaxMind database failed validation: %w", probeErr)
+	}
+	if err := probe.Close(); err != nil {
+		_ = os.Remove(tmpFile)
+		return fmt.Errorf("failed to close validation reader: %w", err)
+	}
+	if err := os.Rename(tmpFile, s.dbFilePath); err != nil {
+		_ = os.Remove(tmpFile)
+		return fmt.Errorf("failed to replace MaxMind database file: %w", err)
+	}
 	// 重新加载数据库以使用新下载的文件
 	return s.initialize()
 }

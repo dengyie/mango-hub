@@ -1313,18 +1313,12 @@ func (s *Store) CleanupExpired(ctx context.Context, now time.Time) (int64, error
 		return 0, err
 	}
 	s.retentionMu.Lock()
-	defer s.retentionMu.Unlock()
 
 	defs, err := s.ListMetrics(ctx)
 	if err != nil {
+		s.retentionMu.Unlock()
 		return 0, err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = tx.Rollback() }()
-
 	type cleanupGroupKey struct {
 		interval    time.Duration
 		beforeMilli int64
@@ -1356,9 +1350,21 @@ func (s *Store) CleanupExpired(ctx context.Context, now time.Time) (int64, error
 		}
 	}
 
+	// Per-group transactions instead of one mega-tx. The old single
+	// transaction held retentionMu exclusively across every tier's DELETE —
+	// an hour of minute-tier growth (~37k rows at fleet scale) blew past the
+	// report flusher's 10s deadline, spamming "failed to flush metric report
+	// batch: context deadline exceeded" while blocking all live writes.
+	// Cleanup deletes are idempotent per cutoff, so committing group by group
+	// and re-acquiring the lock between groups trades cross-group atomicity
+	// (unneeded for idempotent DELETEs) for a short exclusive hold per group.
+	s.retentionMu.Unlock()
+
 	var total int64
 	if len(disabled) > 0 {
-		deleted, err := s.deleteRollupsForMetricsTx(ctx, disabled, tx)
+		deleted, err := s.cleanupGroupTx(ctx, func(tx *sql.Tx) (int64, error) {
+			return s.deleteRollupsForMetricsTx(ctx, disabled, tx)
+		})
 		if err != nil {
 			return total, err
 		}
@@ -1378,14 +1384,14 @@ func (s *Store) CleanupExpired(ctx context.Context, now time.Time) (int64, error
 		return keys[i].beforeMilli < keys[j].beforeMilli
 	})
 	for _, key := range keys {
-		deleted, err := s.deleteRollupGroupTx(ctx, groups[key], key.interval, key.beforeMilli, key.all, tx)
+		key := key
+		deleted, err := s.cleanupGroupTx(ctx, func(tx *sql.Tx) (int64, error) {
+			return s.deleteRollupGroupTx(ctx, groups[key], key.interval, key.beforeMilli, key.all, tx)
+		})
 		if err != nil {
 			return total, err
 		}
 		total += deleted
-	}
-	if err := tx.Commit(); err != nil {
-		return total, err
 	}
 
 	for _, name := range disabled {
@@ -1401,6 +1407,27 @@ func (s *Store) CleanupExpired(ctx context.Context, now time.Time) (int64, error
 		s.deleteCoarseRollups(name)
 	}
 	return total, nil
+}
+
+// cleanupGroupTx runs one bounded cleanup group in its own short transaction,
+// holding retentionMu exclusively only for that group's DELETE so the report
+// flusher's shared acquisition can interleave between groups.
+func (s *Store) cleanupGroupTx(ctx context.Context, fn func(tx *sql.Tx) (int64, error)) (int64, error) {
+	s.retentionMu.Lock()
+	defer s.retentionMu.Unlock()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	deleted, err := fn(tx)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return deleted, nil
 }
 
 func (s *Store) deleteRollupsForMetricsTx(ctx context.Context, names []string, tx *sql.Tx) (int64, error) {

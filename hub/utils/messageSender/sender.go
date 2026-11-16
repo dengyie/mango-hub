@@ -83,6 +83,15 @@ func Initialize() {
 	LoadProvider(NotificationMethod, senderConfig.Addition)
 }
 
+// retryBackoff sleeps between send attempts so three rapid retries do not
+// hammer a provider that is already struggling (and each attempt is now
+// deadline-bounded in the transport implementations).
+func retryBackoff(attempt int) {
+	if attempt > 0 {
+		time.Sleep(time.Duration(attempt) * 2 * time.Second)
+	}
+}
+
 func SendTextMessage(message string, title string) error {
 	if CurrentProvider() == nil {
 		return fmt.Errorf("message sender provider is not initialized")
@@ -96,6 +105,7 @@ func SendTextMessage(message string, title string) error {
 		return nil
 	}
 	for i := 0; i < 3; i++ {
+		retryBackoff(i)
 		err = CurrentProvider().SendTextMessage(message, title)
 		if err == nil {
 			auditlog.Log("", "", "Message sent: "+title, "info")
@@ -152,6 +162,7 @@ func SendEvent(event models.EventMessage) error {
 	if eventSender, ok := CurrentProvider().(factory.IEventMessageSender); ok {
 		// 如果实现了,直接调用 SendEvent
 		for i := 0; i < 3; i++ {
+			retryBackoff(i)
 			err = eventSender.SendEvent(event)
 			if err == nil || err.Error() == "short response: \x00\x00\x00\x1a\x00\x00\x00" {
 				auditlog.Log("", "", "Event message sent: "+fmt.Sprint(event.Event), "info")
@@ -168,6 +179,7 @@ func SendEvent(event models.EventMessage) error {
 	messageTemplate = parseTemplate(messageTemplate, event)
 
 	for i := 0; i < 3; i++ {
+		retryBackoff(i)
 		err = CurrentProvider().SendTextMessage(messageTemplate, fmt.Sprint(event.Event))
 		if err == nil || err.Error() == "short response: \x00\x00\x00\x1a\x00\x00\x00" { // QQ 会返回这个错误，但实际上消息是发送成功的
 			auditlog.Log("", "", "Event message sent: "+fmt.Sprint(event.Event), "info")

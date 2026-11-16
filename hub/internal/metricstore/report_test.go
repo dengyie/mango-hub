@@ -123,7 +123,11 @@ func useReportCounterFailureStore(t *testing.T) (*metric.Store, *reportCounterFa
 	return s, fault
 }
 
-func TestReportBatchCounterRestoreFailureInitializesStateOnce(t *testing.T) {
+// A failed counter restore must NOT permanently mark the traffic state
+// initialized: the next batch retries the lookup, and once the read succeeds
+// the lost delta is recovered from the true previous counter instead of being
+// frozen at zero forever.
+func TestReportBatchCounterRestoreFailureRetriesAndRecovers(t *testing.T) {
 	s, fault := useReportCounterFailureStore(t)
 	ctx := context.Background()
 	base := time.Now().UTC().Truncate(time.Second)
@@ -148,8 +152,8 @@ func TestReportBatchCounterRestoreFailureInitializesStateOnce(t *testing.T) {
 	state.mu.Lock()
 	initialized := state.initialized
 	state.mu.Unlock()
-	if !initialized {
-		t.Fatal("report traffic state was not initialized after restore failure")
+	if initialized {
+		t.Fatal("traffic state must stay uninitialized after a failed restore so the next batch retries")
 	}
 
 	second := first
@@ -159,8 +163,14 @@ func TestReportBatchCounterRestoreFailureInitializesStateOnce(t *testing.T) {
 	if _, err := writeReportBatch(ctx, []v2.Report{second}); err != nil {
 		t.Fatalf("write second report: %v", err)
 	}
-	if fault.denied.Load() != 2 {
-		t.Fatalf("counter restore queries after second batch = %d, want no repeat", fault.denied.Load())
+	state.mu.Lock()
+	initialized = state.initialized
+	state.mu.Unlock()
+	// initialized can only flip back to true through a successful restore, so
+	// it being set after the second batch proves the lookup was retried (and
+	// the deltas were recovered from the persisted previous counters).
+	if !initialized {
+		t.Fatal("traffic state must be initialized once the retried restore succeeds")
 	}
 	assertMetricValues(t, s, MetricTrafficUp, first.UUID, base.Add(-time.Second), base.Add(2*time.Second), []float64{0, 50})
 	assertMetricValues(t, s, MetricTrafficDown, first.UUID, base.Add(-time.Second), base.Add(2*time.Second), []float64{0, 60})

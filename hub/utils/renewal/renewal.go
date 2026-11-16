@@ -90,15 +90,15 @@ func CheckAndAutoRenewal(client models.Client) {
 				newExpireTime = baseTime.AddDate(0, 0, billingCycle)
 			}
 
-			// 更新客户端过期时间
-			updates := map[string]interface{}{
-				"uuid":       client.UUID,
-				"expired_at": newExpireTime.UTC(),
-			}
-
-			err := clients.SaveClient(updates)
+			// 更新客户端过期时间。CAS：仅当 expired_at 仍等于读取快照时写入，
+			// 防止连接路径与每日任务并发触发时把月付节点续出两个周期。
+			renewed, err := clients.RenewClientExpiredAt(client.UUID, clientExpireTime, newExpireTime)
 			if err != nil {
 				auditlog.EventLog("renewal", fmt.Sprintf("Failed to renew client %s (%s): %v", client.Name, client.UUID, err))
+				return
+			}
+			if !renewed {
+				// 另一条路径已经完成本周期续费，跳过通知避免重复。
 				return
 			}
 

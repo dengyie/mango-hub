@@ -201,8 +201,9 @@ func ssrfProtectionEnabled() (bool, error) {
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return false, err
 	}
-	if err := config.Set(config.SSRFProtectionEnabledKey, false); err != nil {
-		return false, err
-	}
-	return false, nil
+	// Missing setting defaults to PROTECTED and is not persisted: the doc
+	// comment on IsSSRFProtectionEnabled promises fail-closed, but the old
+	// not-found path wrote false permanently on first read, silently
+	// disabling the guarded dialer for every later market download.
+	return true, nil
 }

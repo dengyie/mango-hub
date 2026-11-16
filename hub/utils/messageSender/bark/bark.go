@@ -7,9 +7,15 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/dengyie/mangohub/hub/utils/messageSender/factory"
+	"github.com/dengyie/mangohub/hub/utils/messageSender/outboundhttp"
 )
+
+// senderHTTPClient bounds every Bark call (see telegram.go: DefaultClient had
+// no response-header timeout and the retry loop amplifies one hung endpoint).
+var senderHTTPClient = outboundhttp.NewClient(30 * time.Second)
 
 type BarkSender struct {
 	Addition
@@ -83,7 +89,7 @@ func (b *BarkSender) SendTextMessage(message, title string) error {
 	requestURL := fmt.Sprintf("%s/push", serverURL)
 
 	// 发送 HTTP POST 请求
-	resp, err := http.Post(requestURL, "application/json", bytes.NewBuffer(jsonData))
+	resp, err := senderHTTPClient.Post(requestURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to send request: %v", err)
 	}

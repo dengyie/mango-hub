@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"mime"
 	"mime/quotedprintable"
+	"net"
 	"net/mail"
 	"net/smtp"
 	"strconv"
@@ -194,16 +195,23 @@ func (e *EmailSender) SendTextMessage(message, title string) error {
 
 	addr := e.Addition.Host + ":" + strconv.Itoa(e.Addition.Port)
 
+	// smtp.Dial / tls.Dial / smtp.SendMail dial with no deadline: a stalled
+	// SMTP server hung the notification goroutine forever (amplified by the
+	// 3-attempt retry loop). Bound dial + whole-session instead.
+	dialer := &net.Dialer{Timeout: 30 * time.Second}
+	sessionDeadline := time.Now().Add(2 * time.Minute)
+
 	if e.Addition.UseSSL {
 		// Use TLS. If port is 465, prefer implicit TLS. Otherwise, use STARTTLS.
 		if e.Addition.Port == 465 {
 			// Implicit TLS (SMTPS)
 			tlsCfg := &tls.Config{ServerName: e.Addition.Host}
-			conn, err := tls.Dial("tcp", addr, tlsCfg)
+			conn, err := tls.DialWithDialer(dialer, "tcp", addr, tlsCfg)
 			if err != nil {
 				return fmt.Errorf("failed to establish implicit TLS connection: %w", err)
 			}
 			defer conn.Close()
+			_ = conn.SetDeadline(sessionDeadline)
 
 			c, err := smtp.NewClient(conn, e.Addition.Host)
 			if err != nil {
@@ -237,9 +245,15 @@ func (e *EmailSender) SendTextMessage(message, title string) error {
 			return c.Quit()
 		} else {
 			// STARTTLS
-			c, err := smtp.Dial(addr)
+			conn, err := dialer.Dial("tcp", addr)
 			if err != nil {
 				return fmt.Errorf("failed to dial SMTP server: %w", err)
+			}
+			defer conn.Close()
+			_ = conn.SetDeadline(sessionDeadline)
+			c, err := smtp.NewClient(conn, e.Addition.Host)
+			if err != nil {
+				return fmt.Errorf("failed to create SMTP client: %w", err)
 			}
 			defer c.Close()
 
@@ -275,13 +289,42 @@ func (e *EmailSender) SendTextMessage(message, title string) error {
 		}
 	} else {
 		// Send without SSL/TLS (less secure). We still reuse the composed message and parsed addresses.
-		return smtp.SendMail(
-			addr,
-			auth,
-			senderAddr,
-			rcptList,
-			fullMsg,
-		)
+		// Replaces smtp.SendMail (unbounded dial) with a bounded dial + session deadline.
+		conn, err := dialer.Dial("tcp", addr)
+		if err != nil {
+			return fmt.Errorf("failed to dial SMTP server: %w", err)
+		}
+		defer conn.Close()
+		_ = conn.SetDeadline(sessionDeadline)
+		c, err := smtp.NewClient(conn, e.Addition.Host)
+		if err != nil {
+			return fmt.Errorf("failed to create SMTP client: %w", err)
+		}
+		defer c.Close()
+
+		// smtp.SendMail issued HELO before MAIL FROM; keep that handshake.
+		if err = c.Hello(e.Addition.Host); err != nil {
+			return fmt.Errorf("failed to greet SMTP server: %w", err)
+		}
+		if err = c.Mail(senderAddr); err != nil {
+			return fmt.Errorf("failed to set sender: %w", err)
+		}
+		for _, rcpt := range rcptList {
+			if err = c.Rcpt(rcpt); err != nil {
+				return fmt.Errorf("failed to add recipient %s: %w", rcpt, err)
+			}
+		}
+		w, err := c.Data()
+		if err != nil {
+			return fmt.Errorf("failed to get data writer: %w", err)
+		}
+		if _, err = w.Write(fullMsg); err != nil {
+			return fmt.Errorf("failed to write message: %w", err)
+		}
+		if err = w.Close(); err != nil {
+			return fmt.Errorf("failed to close data writer: %w", err)
+		}
+		return c.Quit()
 	}
 }
 

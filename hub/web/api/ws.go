@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/dengyie/mangohub/hub/database/accounts"
 	"github.com/dengyie/mangohub/hub/database/clients"
@@ -10,6 +11,16 @@ import (
 	agent_runtime "github.com/dengyie/mangohub/hub/web/agent"
 	"github.com/gin-gonic/gin"
 )
+
+// publicWSReadLimit bounds one WebSocket frame on visitor-facing endpoints:
+// gorilla buffers the whole frame before any handler runs, so without a limit
+// a single oversized text frame on an anonymous connection is a remote OOM.
+const publicWSReadLimit = 1 << 20 // 1 MiB
+
+// publicWSIdleTimeout evicts visitor WebSocket connections that send nothing:
+// the loops below read with no deadline otherwise, letting dead clients pin
+// a goroutine and a connection forever (slowloris-style slot retention).
+const publicWSIdleTimeout = 5 * time.Minute
 
 func GetClients(c *gin.Context) {
 	// 升级到ws
@@ -24,6 +35,7 @@ func GetClients(c *gin.Context) {
 		return
 	}
 	defer conn.Close()
+	conn.SetReadLimit(publicWSReadLimit)
 
 	// 初始化用户信息
 	var (
@@ -39,6 +51,8 @@ func GetClients(c *gin.Context) {
 
 	// 请求
 	for {
+		// Idle deadline: refreshed on every request the viewer sends.
+		_ = conn.SetReadDeadline(time.Now().Add(publicWSIdleTimeout))
 		var resp struct {
 			Online []string             `json:"online"` // 已建立连接的客户端uuid列表
 			Data   map[string]v2.Report `json:"data"`   // 最后上报的数据
@@ -84,6 +98,9 @@ func GetClients(c *gin.Context) {
 			}
 
 			report.UUID = "" // 不暴露 uuid
+			if !isLogin {
+				redactReportForGuest(report)
+			}
 			if report.CPU.Usage == 0 {
 				report.CPU.Usage = 0.01
 			}
@@ -95,4 +112,16 @@ func GetClients(c *gin.Context) {
 			return
 		}
 	}
+}
+
+// redactReportForGuest enforces the guest-visibility policy on the live
+// report stream, matching what publicGetClientRecentRecords and
+// getNodesLatestStatus already do: mining wallet/pool addresses, GPU
+// serial-level details and disk IO are admin/owner data, not public homepage
+// material. The homepage only renders CPU/RAM/load/net numbers.
+func redactReportForGuest(report *v2.Report) {
+	report.Mining = nil
+	report.GPU = nil
+	report.DiskIO = nil
+	report.Message = ""
 }

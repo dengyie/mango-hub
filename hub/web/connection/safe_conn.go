@@ -216,6 +216,12 @@ func (sc *SafeConn) SetReadDeadline(t time.Time) error {
 	return sc.conn.SetReadDeadline(t)
 }
 
+// SetReadLimit forwards to the underlying connection (bounds one inbound
+// frame; gorilla buffers the whole frame before the handler sees it).
+func (sc *SafeConn) SetReadLimit(limit int64) {
+	sc.conn.SetReadLimit(limit)
+}
+
 func (sc *SafeConn) GetConn() *websocket.Conn {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
