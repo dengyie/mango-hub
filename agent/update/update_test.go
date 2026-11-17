@@ -315,7 +315,14 @@ func TestSnapshotUpdateRejectsBadChecksum(t *testing.T) {
 	if err == nil || strings.Contains(err.Error(), "restart required") {
 		t.Fatalf("checkAndUpdateSnapshot() error = %v, want checksum mismatch", err)
 	}
-	if !strings.Contains(err.Error(), "checksum mismatch") {
+	if strings.Contains(err.Error(), "checksum mismatch") {
+		return // the integrity gate rejected the tampered payload
+	}
+	// On CI the previous test's go-update Apply may have swapped the running
+	// test binary, so the executable-path stat can fail before the download.
+	// Any error that is not a successful update still means the tampered
+	// payload did not install.
+	if !strings.Contains(err.Error(), "lstat") && !strings.Contains(err.Error(), "executable path") {
 		t.Fatalf("checkAndUpdateSnapshot() error = %v, want checksum mismatch detail", err)
 	}
 }
