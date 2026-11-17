@@ -439,37 +439,45 @@ func doInitialize() error {
 		backupZipPath := filepath.Join(".", "data", "backup.zip")
 		if _, statErr := os.Stat(backupZipPath); statErr == nil {
 			// 4. 将当前数据快照保存到 ./data/backup/，并保留已有归档。
+			// pre-restore 备份失败必须中止恢复：这是恢复流程唯一的回退点，
+			// 继续执行会在没有任何回退的情况下清空 ./data（磁盘满/权限问题
+			// 恰恰是触发恢复的常见环境），若 backup.zip 本身也损坏则数据
+			// 全部丢失。保留 backup.zip 让下一次启动重试。
 			backupDir := filepath.Join(".", "data", "backup")
 			if err := os.MkdirAll(backupDir, 0755); err != nil {
-				logger.Errorf("dbcore", "[restore] failed to create backup dir: %v", err)
-			} else {
-				tsName := time.Now().UTC().Format("20060102-150405.000")
-				bakPath := filepath.Join(backupDir, fmt.Sprintf("pre-restore-%s.zip", tsName))
-				// 与升级备份一致：排除 backup 归档目录、backup.zip 自身与 theme-backup（主题历史
-				// 备份独立存在，恢复流程不动它，重复打包只会让 zip 膨胀）。
-				themeBackupDir := filepath.Join(".", "data", "theme-backup")
-				if zipErr := zipDirectoryExcluding("./data", bakPath, map[string]struct{}{backupZipPath: {}, backupDir: {}, themeBackupDir: {}}); zipErr != nil {
-					logger.Errorf("dbcore", "[restore] failed to zip current data: %v", zipErr)
-				} else {
-					logger.Infof("dbcore", "[restore] current data zipped to %s", bakPath)
-					// 保留策略：pre-restore 备份同样只保留最近 N 份，防止恢复流程无限累积。
-					if err := prunePreRestoreBackups(backupDir, maxPreRestoreBackups); err != nil {
-						logger.Errorf("dbcore", "[restore] failed to prune old pre-restore backups: %v", err)
-					}
-				}
+				logger.Errorf("dbcore", "[restore] failed to create backup dir, aborting restore (backup.zip kept): %v", err)
+				return
+			}
+			tsName := time.Now().UTC().Format("20060102-150405.000")
+			bakPath := filepath.Join(backupDir, fmt.Sprintf("pre-restore-%s.zip", tsName))
+			// 与升级备份一致：排除 backup 归档目录、backup.zip 自身与 theme-backup（主题历史
+			// 备份独立存在，恢复流程不动它，重复打包只会让 zip 膨胀）。
+			themeBackupDir := filepath.Join(".", "data", "theme-backup")
+			if zipErr := zipDirectoryExcluding("./data", bakPath, map[string]struct{}{backupZipPath: {}, backupDir: {}, themeBackupDir: {}}); zipErr != nil {
+				logger.Errorf("dbcore", "[restore] failed to zip current data, aborting restore (backup.zip kept): %v", zipErr)
+				return
+			}
+			logger.Infof("dbcore", "[restore] current data zipped to %s", bakPath)
+			// 保留策略：pre-restore 备份同样只保留最近 N 份，防止恢复流程无限累积。
+			if err := prunePreRestoreBackups(backupDir, maxPreRestoreBackups); err != nil {
+				logger.Errorf("dbcore", "[restore] failed to prune old pre-restore backups: %v", err)
 			}
 
 			// 5. 删除数据文件，但保留归档目录和待恢复的 backup.zip。
 			if delErr := removeAllInDirExcept("./data", map[string]struct{}{backupZipPath: {}, backupDir: {}}); delErr != nil {
+				// 清理失败不中止：目录里残留的旧文件会被解压覆盖，最坏情况
+				// 是新旧文件混合，仍好过永远不执行恢复。
 				logger.Errorf("dbcore", "[restore] failed to cleanup data dir: %v", delErr)
 			}
 
-			// 6. 解压 ./data/backup.zip 到 ./data
+			// 6. 解压 ./data/backup.zip 到 ./data。
+			// 解压失败时保留 backup.zip（不进入第 7 步删除），让下次启动重试；
+			// 此时 ./data 已被清空，唯一的数据源就是这个包。
 			if unzipErr := unzipToDir(backupZipPath, "./data"); unzipErr != nil {
-				logger.Errorf("dbcore", "[restore] failed to unzip backup into data: %v", unzipErr)
-			} else {
-				logger.Infof("dbcore", "[restore] backup.zip extracted to ./data")
+				logger.Errorf("dbcore", "[restore] failed to unzip backup into data, keeping backup.zip for retry: %v", unzipErr)
+				return
 			}
+			logger.Infof("dbcore", "[restore] backup.zip extracted to ./data")
 
 			// 7. 删除 ./data/backup.zip
 			if rmErr := os.Remove(backupZipPath); rmErr != nil {

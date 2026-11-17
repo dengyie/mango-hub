@@ -1,7 +1,12 @@
 package update
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"runtime"
 	"strings"
 	"testing"
@@ -226,18 +231,38 @@ func TestSnapshotUpdateReturnsRestartRequired(t *testing.T) {
 	t.Cleanup(func() { Repo = oldRepo })
 
 	assetName := expectedAssetName(runtime.GOOS, runtime.GOARCH)
+	payload := bytes.Repeat([]byte("MANGOHUB-FAKE-BINARY\n"), 4096)
+	sum := sha256.Sum256(payload)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/" + assetName:
+			w.Write(payload)
+		case "/checksums.txt":
+			fmt.Fprintf(w, "%x  %s\n", sum, assetName)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
 	release := testRelease("Snapshot-2607061200", true, false, time.Now(), assetName)
-	updater := &fakeSelfUpdater{
-		updateTo: func(gotRelease *selfupdate.Release, gotPath string) error {
-			if gotRelease.AssetURL != release.Assets[0].BrowserDownloadURL {
-				t.Fatalf("UpdateTo asset = %q, want %q", gotRelease.AssetURL, release.Assets[0].BrowserDownloadURL)
-			}
-			if gotPath == "" {
-				t.Fatal("UpdateTo received an empty executable path")
-			}
-			return nil
-		},
+	// Point every asset at the local test server, then add checksums.txt.
+	for i := range release.Assets {
+		release.Assets[i].BrowserDownloadURL = srv.URL + "/" + release.Assets[i].Name
 	}
+	// The checksum asset must exist in Assets for snapshotChecksumEntry to find it.
+	release.Assets = append(release.Assets, githubReleaseAsset{
+		ID:                 99,
+		Name:               "checksums.txt",
+		Size:               128,
+		BrowserDownloadURL: srv.URL + "/checksums.txt",
+	})
+
+	// checkAndUpdateSnapshot applies via go-update against the running test
+	// binary; capture the apply through the binary path argument instead of
+	// letting UpdateTo mock it (the new flow no longer goes through the
+	// selfupdate library download).
 	lister := func(owner, repo string) ([]githubRelease, error) {
 		if owner != "dengyie" || repo != "mangohub" {
 			t.Fatalf("list releases repo = %s/%s, want dengyie/mangohub", owner, repo)
@@ -245,8 +270,53 @@ func TestSnapshotUpdateReturnsRestartRequired(t *testing.T) {
 		return []githubRelease{release}, nil
 	}
 
-	if err := checkAndUpdateSnapshot(updater, lister, func() bool { return false }); !errors.Is(err, ErrRestartRequired) {
+	if err := checkAndUpdateSnapshot(&fakeSelfUpdater{}, lister, func() bool { return false }); !errors.Is(err, ErrRestartRequired) {
 		t.Fatalf("checkAndUpdateSnapshot() error = %v, want ErrRestartRequired", err)
+	}
+}
+
+func TestSnapshotUpdateRejectsBadChecksum(t *testing.T) {
+	oldVersion := CurrentVersion
+	CurrentVersion = "Snapshot-2607061100"
+	t.Cleanup(func() { CurrentVersion = oldVersion })
+	oldRepo := Repo
+	Repo = "dengyie/mangohub"
+	t.Cleanup(func() { Repo = oldRepo })
+
+	assetName := expectedAssetName(runtime.GOOS, runtime.GOARCH)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/" + assetName:
+			w.Write([]byte("TAMPERED PAYLOAD"))
+		case "/checksums.txt":
+			// Declared hash belongs to different bytes.
+			fmt.Fprintf(w, "%064d  %s\n", 1, assetName)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	release := testRelease("Snapshot-2607061200", true, false, time.Now(), assetName)
+	for i := range release.Assets {
+		release.Assets[i].BrowserDownloadURL = srv.URL + "/" + release.Assets[i].Name
+	}
+	release.Assets = append(release.Assets, githubReleaseAsset{
+		ID:                 99,
+		Name:               "checksums.txt",
+		Size:               128,
+		BrowserDownloadURL: srv.URL + "/checksums.txt",
+	})
+	lister := func(owner, repo string) ([]githubRelease, error) {
+		return []githubRelease{release}, nil
+	}
+
+	err := checkAndUpdateSnapshot(&fakeSelfUpdater{}, lister, func() bool { return false })
+	if err == nil || strings.Contains(err.Error(), "restart required") {
+		t.Fatalf("checkAndUpdateSnapshot() error = %v, want checksum mismatch", err)
+	}
+	if !strings.Contains(err.Error(), "checksum mismatch") {
+		t.Fatalf("checkAndUpdateSnapshot() error = %v, want checksum mismatch detail", err)
 	}
 }
 

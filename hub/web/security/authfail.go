@@ -45,10 +45,14 @@ func AuthFailLimiter() gin.HandlerFunc {
 
 func (st *authFailState) middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Anonymous requests cannot brute-force a credential, so they neither
-		// count nor get blocked. That keeps public pages and health probes
-		// reachable even while an address is in cooldown.
-		if !requestCarriesCredentials(c) {
+		// Credential-bearing requests participate fully. Credential-less traffic
+		// is exempt from *blocking* so public pages and health probes stay
+		// reachable during someone else's cooldown — but a login attempt with a
+		// username+password body is exactly a credential-guessing request even
+		// though it carries no Authorization header/cookie, so /api/login is
+		// always counted (otherwise login brute-force bypasses the limiter).
+		isLogin := isLoginAttempt(c)
+		if !requestCarriesCredentials(c) && !isLogin {
 			c.Next()
 			return
 		}
@@ -124,6 +128,18 @@ func requestCarriesCredentials(c *gin.Context) bool {
 	}
 	// rpc2 agents authenticate via ?token= or ?Authorization=.
 	return c.Query("token") != "" || c.Query("Authorization") != ""
+}
+
+// isLoginAttempt reports whether the request is a login POST (or 2FA verify).
+// These count toward the limiter even without any header/cookie credential:
+// the body itself carries the guessed secret. Only the canonical login route
+// matches, so public pages and probes keep their exemption.
+func isLoginAttempt(c *gin.Context) bool {
+	if c.Request.Method != http.MethodPost {
+		return false
+	}
+	path := c.Request.URL.Path
+	return path == "/api/login" || path == "/api/login/verify" || path == "/api/2fa/verify"
 }
 
 func isPrivateOrLoopback(ipStr string) bool {

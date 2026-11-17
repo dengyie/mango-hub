@@ -436,7 +436,9 @@ func TestRequestSSHTicketAliasesAndOverrides(t *testing.T) {
 		User:       &models.User{Username: "admin"},
 	})
 
-	// 测试入参别名 target_client / source_client 以及显式 target_host / target_port 覆盖
+	// 测试入参别名 target_client / source_client。target_host/target_port 不再
+	// 接受调用方覆盖：目标端点只能来自节点记录与 tags（防 client 角色指定任意
+	// 主机获取 hub 签发的凭据），因此期望 IPv4 记录值与默认端口 22。
 	req := &rpc.JsonRpcRequest{
 		Params: map[string]any{
 			"target_client":    "target-alias-uuid",
@@ -461,16 +463,16 @@ func TestRequestSSHTicketAliasesAndOverrides(t *testing.T) {
 	if ticket.SourceClient != "source-alias-uuid" {
 		t.Errorf("expected ticket.SourceClient to be 'source-alias-uuid', got %q", ticket.SourceClient)
 	}
-	if ticket.TargetHost != "10.144.144.99" {
-		t.Errorf("expected ticket.TargetHost override to be '10.144.144.99', got %q", ticket.TargetHost)
+	if ticket.TargetHost != "192.168.1.100" {
+		t.Errorf("expected ticket.TargetHost to be the node record IPv4 '192.168.1.100' (caller override ignored), got %q", ticket.TargetHost)
 	}
-	if ticket.TargetPort != 2222 {
-		t.Errorf("expected ticket.TargetPort override to be 2222, got %d", ticket.TargetPort)
+	if ticket.TargetPort != 22 {
+		t.Errorf("expected ticket.TargetPort to be 22 (caller override ignored), got %d", ticket.TargetPort)
 	}
-	if targetInfo["host"] != "10.144.144.99" || targetInfo["port"] != 2222 {
-		t.Errorf("expected target_info host/port override, got %+v", targetInfo)
+	if targetInfo["host"] != "192.168.1.100" || targetInfo["port"] != 22 {
+		t.Errorf("expected target_info host/port from node record, got %+v", targetInfo)
 	}
-	expectedCmd := "ssh -p 2222 ubuntu@10.144.144.99"
+	expectedCmd := "ssh -p 22 ubuntu@192.168.1.100"
 	if sshCmd != expectedCmd {
 		t.Errorf("expected ssh_command %q, got %q", expectedCmd, sshCmd)
 	}

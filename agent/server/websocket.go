@@ -215,7 +215,12 @@ func runPostFallback(websocketEndpoint string, interval float64) (*ws.SafeConn, 
 
 	reportTicker := time.NewTicker(time.Duration(interval * float64(time.Second)))
 	defer reportTicker.Stop()
-	reconnectTicker := time.NewTicker(time.Duration(flags.ReconnectInterval) * time.Second)
+	reconnectInterval := time.Duration(flags.ReconnectInterval) * time.Second
+	if reconnectInterval <= 0 {
+		// A zero/negative config would panic time.NewTicker here.
+		reconnectInterval = 5 * time.Second
+	}
+	reconnectTicker := time.NewTicker(reconnectInterval)
 	defer reconnectTicker.Stop()
 
 	for {
@@ -369,12 +374,28 @@ func clearV2AckEventIDs(sent []string) {
 	v2AckEventIDs = remaining
 }
 
+// maxV2AckEventIDs caps the pending-ack list. Duplicate acks accumulate when
+// the hub is unreachable: the pull loop returns the same events every ~200ms,
+// processV2Event re-accepts already-seen IDs, and without a cap/dedup the
+// list (and every subsequent pull payload) grows for the whole outage.
+const maxV2AckEventIDs = 512
+
 func addV2AckEventID(id string) {
 	if id == "" {
 		return
 	}
 	v2AckMu.Lock()
 	defer v2AckMu.Unlock()
+	for _, existing := range v2AckEventIDs {
+		if existing == id {
+			return
+		}
+	}
+	if len(v2AckEventIDs) >= maxV2AckEventIDs {
+		// Oldest acks are dropped: the hub re-delivers unacked events anyway,
+		// so a dropped ack costs one duplicate execution attempt, not data.
+		v2AckEventIDs = v2AckEventIDs[1:]
+	}
 	v2AckEventIDs = append(v2AckEventIDs, id)
 }
 

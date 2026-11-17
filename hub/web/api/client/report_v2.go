@@ -25,15 +25,22 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// maxV2PostBodyBytes bounds the agent RPC POST body, plain or gunzipped:
+// gzip allows ~1000x expansion, so an unbounded ReadAll behind gzip.NewReader
+// turns a small request into an OOM. 2 MiB comfortably fits any report batch
+// (the WS path enforces 1 MiB per frame; POST batches may be slightly larger).
+const maxV2PostBodyBytes = 2 << 20
+
 func readMaybeCompressedBody(r *http.Request) ([]byte, error) {
 	defer r.Body.Close()
+	r.Body = http.MaxBytesReader(nil, r.Body, maxV2PostBodyBytes)
 	if strings.EqualFold(r.Header.Get("Content-Encoding"), "gzip") {
-		zr, err := gzip.NewReader(r.Body)
+		zr, err := gzip.NewReader(io.LimitReader(r.Body, maxV2PostBodyBytes))
 		if err != nil {
 			return nil, err
 		}
 		defer zr.Close()
-		return io.ReadAll(zr)
+		return io.ReadAll(io.LimitReader(zr, maxV2PostBodyBytes))
 	}
 	return io.ReadAll(r.Body)
 }

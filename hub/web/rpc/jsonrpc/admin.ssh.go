@@ -387,18 +387,15 @@ func clientRequestSSHTicket(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 
 	targetUser := resolveTargetUser(&targetClient, params.TargetUser)
 
+	// Target host/port come only from the target node's record and tags.
+	// Client-supplied target_host/target_port used to override both, letting a
+	// client-role caller (a compromised agent) obtain hub-issued credentials
+	// plus an ssh_command aimed at any host: pivot/relay abuse through the
+	// hub's key authority. Admins manage per-node SSH endpoints via tags.
 	targetHost := targetClient.IPv4
 	targetPort := 22
 
-	// 允许调用方在入参中显式指定目标 host 和 port
-	if params.TargetHost != "" {
-		targetHost = strings.TrimSpace(params.TargetHost)
-	}
-	if params.TargetPort > 0 {
-		targetPort = params.TargetPort
-	}
-
-	// 若未显式传入，支持从节点 Tags 中健壮解析自定义端口或主机，如 "ssh_port: 2222; ssh_host: 10.144.144.81"
+	// 支持从节点 Tags 中健壮解析自定义端口或主机，如 "ssh_port: 2222; ssh_host: 10.144.144.81"
 	if targetClient.Tags != "" {
 		for _, tag := range strings.Split(targetClient.Tags, ";") {
 			parts := strings.SplitN(tag, ":", 2)
@@ -407,11 +404,11 @@ func clientRequestSSHTicket(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 			}
 			key := strings.ToLower(strings.TrimSpace(parts[0]))
 			val := strings.TrimSpace(parts[1])
-			if params.TargetPort <= 0 && key == "ssh_port" {
+			if key == "ssh_port" {
 				if p, err := strconv.Atoi(val); err == nil && p > 0 {
 					targetPort = p
 				}
-			} else if params.TargetHost == "" && key == "ssh_host" {
+			} else if key == "ssh_host" {
 				if val != "" {
 					targetHost = val
 				}

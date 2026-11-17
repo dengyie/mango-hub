@@ -83,8 +83,9 @@ func saveAutoDiscoveryConfig(config *AutoDiscoveryConfig) error {
 		return fmt.Errorf("failed to marshal auto-discovery config: %v", err)
 	}
 
-	// 写入文件
-	if err := os.WriteFile(configPath, data, 0644); err != nil {
+	// 写入文件。0600：配置里含节点 token，任何本地用户可读即可以该节点身份
+	// 向 hub 伪造上报/执行任务。
+	if err := os.WriteFile(configPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write auto-discovery config: %v", err)
 	}
 

@@ -159,17 +159,30 @@ func (sc *SafeConn) readFrame() (int, []byte, error) {
 	}
 }
 
+// dataWriteWait bounds every data-frame write: a peer that stalls TCP
+// (zero window, half-open NAT) otherwise blocks WriteMessage forever while
+// holding sc.mu, wedging dispatch/notification goroutines and the registry
+// cleanup behind it. The read loop's deadline alone never fires in that
+// state, so the zombie-takeover logic never reclaims the slot.
+const dataWriteWait = 30 * time.Second
+
 // writeFrame runs the wsSend hook chain then writes one frame. A dropped
 // frame is silently skipped; a nil interceptor writes through immediately.
 func (sc *SafeConn) writeFrame(messageType int, data []byte) error {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 	if sc.interceptor == nil || sc.info == nil {
+		if err := sc.conn.SetWriteDeadline(time.Now().Add(dataWriteWait)); err != nil {
+			return err
+		}
 		return sc.conn.WriteMessage(messageType, data)
 	}
 	newType, newData, drop := sc.interceptor.OnSend(sc.info, messageType, data)
 	if drop {
 		return nil
+	}
+	if err := sc.conn.SetWriteDeadline(time.Now().Add(dataWriteWait)); err != nil {
+		return err
 	}
 	return sc.conn.WriteMessage(newType, newData)
 }

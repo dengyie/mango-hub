@@ -1,6 +1,10 @@
 package update
 
 import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +20,7 @@ import (
 
 	"github.com/blang/semver"
 	"github.com/dengyie/mangohub/agent/dnsresolver"
+	"github.com/inconshreveable/go-update"
 	"github.com/rhysd/go-github-selfupdate/selfupdate"
 )
 
@@ -287,22 +292,76 @@ func currentExecutablePath() (string, error) {
 	return cmdPath, nil
 }
 
-func selfUpdateReleaseFromSnapshot(owner, repo string, candidate snapshotReleaseCandidate) *selfupdate.Release {
-	publishedAt := candidate.PublishedAt
-	return &selfupdate.Release{
-		Version:           semver.Version{},
-		AssetURL:          candidate.Asset.BrowserDownloadURL,
-		AssetByteSize:     candidate.Asset.Size,
-		AssetID:           candidate.Asset.ID,
-		ValidationAssetID: -1,
-		URL:               candidate.HTMLURL,
-		ReleaseNotes:      candidate.Body,
-		Name:              candidate.Name,
-		PublishedAt:       &publishedAt,
-		RepoOwner:         owner,
-		RepoName:          repo,
+// snapshotChecksumEntry fetches checksums.txt from the same snapshot release
+// and returns the expected hex SHA-256 for assetName. Empty string when the
+// release carries no checksums.txt (pre-dating the release workflow) — the
+// caller then skips verification, matching install.sh's tolerant behaviour.
+func snapshotChecksumEntry(ctx context.Context, client *http.Client, releases []githubRelease, tagName, assetName string) string {
+	for _, release := range releases {
+		if release.TagName != tagName {
+			continue
+		}
+		for _, asset := range release.Assets {
+			if asset.Name != "checksums.txt" {
+				continue
+			}
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, asset.BrowserDownloadURL, nil)
+			if err != nil {
+				return ""
+			}
+			resp, err := client.Do(req)
+			if err != nil {
+				return ""
+			}
+			data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+			_ = resp.Body.Close()
+			for _, line := range strings.Split(string(data), "\n") {
+				fields := strings.Fields(strings.TrimSpace(line))
+				if len(fields) == 2 && strings.EqualFold(fields[1], assetName) && len(fields[0]) == 64 {
+					return strings.ToLower(fields[0])
+				}
+			}
+		}
+		break
 	}
+	return ""
 }
+
+// downloadVerifiedSnapshot fetches the snapshot asset, verifies its SHA-256
+// against the release checksums.txt (when present), and returns the payload.
+// A mismatch aborts the update: the binary runs as root on the monitored
+// machine, so a corrupted or tampered download must never replace it.
+func downloadVerifiedSnapshot(ctx context.Context, client *http.Client, candidate snapshotReleaseCandidate, expectedSHA256 string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, candidate.Asset.BrowserDownloadURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create download request: %w", err)
+	}
+	req.Header.Add("Accept", "application/octet-stream")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download snapshot asset: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("snapshot asset download returned status %d", resp.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxSnapshotAssetBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed reading snapshot asset body: %w", err)
+	}
+	if expectedSHA256 != "" {
+		sum := sha256.Sum256(data)
+		if !strings.EqualFold(hex.EncodeToString(sum[:]), expectedSHA256) {
+			return nil, fmt.Errorf("snapshot asset checksum mismatch: expected %s, got %x — update aborted", expectedSHA256, sum)
+		}
+		log.Printf("Snapshot asset checksum verified (%s)", expectedSHA256)
+	}
+	return data, nil
+}
+
+// maxSnapshotAssetBytes rejects absurd downloads (agent binaries are ~10-20MB;
+// 256MiB leaves generous headroom for debug builds).
+const maxSnapshotAssetBytes = 256 << 20
 
 func DoUpdateWorks(onRestartRequired func()) {
 	ticker_ := time.NewTicker(time.Duration(6) * time.Hour)
@@ -381,12 +440,39 @@ func checkAndUpdateSnapshot(updater selfUpdater, listReleases releaseLister, isC
 	}
 
 	log.Printf("Will update %s from snapshot %s to %s\n", cmdPath, CurrentVersion, latest.TagName)
-	if err := updater.UpdateTo(selfUpdateReleaseFromSnapshot(owner, repo, latest), cmdPath); err != nil {
+
+	// Integrity gate: fetch checksums.txt from the release, download the asset,
+	// verify SHA-256, and only then swap the binary (go-update applies atomically
+	// with rollback). Older snapshots without checksums.txt fall back to a plain
+	// download — same tolerance install.sh shows.
+	client := dnsresolver.GetHTTPClient(5 * time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	expected := snapshotChecksumEntry(ctx, client, releases, latest.TagName, assetName)
+	data, err := downloadVerifiedSnapshot(ctx, client, latest, expected)
+	if err != nil {
+		return fmt.Errorf("failed to fetch snapshot %s: %w", latest.TagName, err)
+	}
+
+	if err := applySnapshotUpdate(bytes.NewReader(data), latest.Asset.BrowserDownloadURL, cmdPath); err != nil {
 		return fmt.Errorf("failed to update to snapshot %s: %w", latest.TagName, err)
 	}
 
 	log.Printf("Successfully updated to snapshot version %s\n", latest.TagName)
 	return ErrRestartRequired
+}
+
+// applySnapshotUpdate mirrors selfupdate's uncompressAndUpdate: unpack the
+// asset (gz/xz/tar-or-raw depending on the asset name) and swap the running
+// binary via go-update. It exists so the integrity check can sit between
+// download and apply — the library's UpdateTo offers no pre-apply hook.
+func applySnapshotUpdate(src io.Reader, assetURL, cmdPath string) error {
+	_, cmd := filepath.Split(cmdPath)
+	asset, err := selfupdate.UncompressCommand(src, assetURL, cmd)
+	if err != nil {
+		return err
+	}
+	return update.Apply(asset, update.Options{TargetPath: cmdPath})
 }
 
 // 检查更新并执行自动更新

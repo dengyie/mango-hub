@@ -334,6 +334,13 @@ func (s *Store) FlushCoarse(ctx context.Context, now time.Time) (int, error) {
 func (s *Store) metricRollupPolicyTx(ctx context.Context, metricName string, tx *sql.Tx) (RollupPolicy, error) {
 	var retentionDays int
 	err := tx.QueryRowContext(ctx, "SELECT retention_days FROM "+s.tables.definitions+" WHERE name = "+s.dialect.placeholder(1), metricName).Scan(&retentionDays)
+	if err == sql.ErrNoRows {
+		// Same empty-result semantics as metricRollupPolicy: the metric can be
+		// deleted concurrently (admin DeleteMetric) between takeClosedHotRollups
+		// and this query. Failing here would abort the whole flush transaction
+		// for every metric and re-queue the orphaned buckets forever.
+		return RollupPolicy{}, nil
+	}
 	if err != nil {
 		return RollupPolicy{}, err
 	}

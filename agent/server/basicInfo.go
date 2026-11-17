@@ -20,7 +20,14 @@ import (
 var flags = pkg_flags.GlobalConfig
 
 func DoUploadBasicInfoWorks() {
-	ticker := time.NewTicker(time.Duration(flags.InfoReportInterval) * time.Minute)
+	interval := time.Duration(flags.InfoReportInterval) * time.Minute
+	if interval <= 0 {
+		// A zero/negative config would panic time.NewTicker and take the whole
+		// agent down at startup; fall back to the 5-minute default.
+		log.Printf("info-report-interval %d is invalid, falling back to 5 minutes", flags.InfoReportInterval)
+		interval = 5 * time.Minute
+	}
+	ticker := time.NewTicker(interval)
 	for range ticker.C {
 		err := uploadBasicInfo()
 		if err != nil {
