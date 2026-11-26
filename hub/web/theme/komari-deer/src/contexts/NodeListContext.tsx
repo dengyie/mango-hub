@@ -46,6 +46,8 @@ export type NodeBasicInfo = {
   currency: string;
   /** 分组 */
   group: string;
+  /** 公开备注 / 部署项目 */
+  public_remark?: string;
   /** 流量阈值 */
   traffic_limit: number;
   /** 流量阈值类型 */

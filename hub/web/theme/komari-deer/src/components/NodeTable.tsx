@@ -26,6 +26,8 @@ import { formatBytes } from "@/utils/unitHelper";
 import AdaptiveChart from "./AdaptiveChart";
 import Flag from "./Flag";
 import PriceTags from "./PriceTags";
+import { NodeProjects } from "./NodeProjects";
+import { parseNodeProjects } from "@/lib/nodeProjects";
 import Tips from "./ui/tips";
 import { DetailsGrid } from "./DetailsGrid";
 import { getOSImage } from "@/utils";
@@ -322,6 +324,9 @@ const NodeTable: React.FC<NodeTableProps> = ({ nodes, liveData, isLive, summarie
                           <span className="text-xs text-muted-foreground">
                             {isOnline ? formatUptime(nodeData.uptime, t) : t(`dashboard.${health.status}`)}
                           </span>
+                          {parseNodeProjects(node.public_remark).length > 0 && (
+                            <NodeProjects publicRemark={node.public_remark} compact maxVisible={2} className="mt-1 max-w-[200px]" />
+                          )}
                         </div>
                       </a>
                     </div>
@@ -472,6 +477,11 @@ interface ExpandedNodeDetailsProps {
 const ExpandedNodeDetails: React.FC<ExpandedNodeDetailsProps> = ({ node }) => {
   return (
     <div className="flex w-full min-w-0 max-w-full flex-col gap-6 overflow-hidden">
+      {parseNodeProjects(node.public_remark).length > 0 && (
+        <div data-card-blur-surface="true" className="min-w-0 max-w-full overflow-hidden rounded-lg border border-border/60 bg-card p-5 shadow-sm transition-shadow hover:shadow-md">
+          <NodeProjects publicRemark={node.public_remark} showLabel />
+        </div>
+      )}
       <div data-card-blur-surface="true" className="min-w-0 max-w-full overflow-hidden rounded-lg border border-border/60 bg-card p-5 shadow-sm transition-shadow hover:shadow-md">
         <DetailsGrid uuid={node.uuid} />
       </div>

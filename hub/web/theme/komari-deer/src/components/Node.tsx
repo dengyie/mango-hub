@@ -16,6 +16,8 @@ import { miningStatusPill } from "@/utils/miningHelper";
 import Flag from "./Flag";
 import PriceTags from "./PriceTags";
 import LoadChartFloat from "./LoadChartFloat";
+import { NodeProjects } from "./NodeProjects";
+import { parseNodeProjects } from "@/lib/nodeProjects";
 import Tips from "./ui/tips";
 
 /** Format seconds into readable uptime */
@@ -180,7 +182,7 @@ const Node = ({ basic, live, health, ping }: NodeProps) => {
   const percentage = network ? getTrafficPercentage(network.totalUp, network.totalDown, basic.traffic_limit, trafficType) : 0;
   const reportTime = live?.updated_at ? Date.parse(live.updated_at) : NaN;
   return <article id={basic.uuid} data-node-card className={cn("min-w-0 rounded-xl border bg-card p-4 text-card-foreground", health.status === "offline" && "border-rose-500/40")}>
-    <div className="flex h-[196px] flex-col">
+    <div className="flex h-[228px] flex-col">
       <div className="flex items-start gap-2.5">
         <div className="shrink-0 pt-1"><Flag flag={basic.region} /></div>
         <div className="min-w-0 flex-1">
@@ -201,6 +203,7 @@ const Node = ({ basic, live, health, ping }: NodeProps) => {
       <p className="mt-2 h-4 truncate text-[11px] leading-4 text-muted-foreground" title={health.unknown ? t(current ? "dashboard.noProbeData" : "dashboard.staleNode") : undefined}>
         {health.unknown ? t(current ? "dashboard.noProbeData" : "dashboard.staleNode") : !current && t("dashboard.offline")}
       </p>
+      <NodeProjects publicRemark={basic.public_remark} compact maxVisible={2} className="mt-1.5" />
       <Button variant="ghost" className="mt-auto h-9 w-full shrink-0 justify-between px-0 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground" aria-expanded={expanded} aria-controls={`details-${basic.uuid}`} onClick={() => setExpanded((value) => !value)}>
         <span>{t(expanded ? "dashboard.hideDetails" : "dashboard.details")}</span><ChevronDown className={cn("h-4 w-4 transition-transform", expanded && "rotate-180")} />
       </Button>
@@ -218,6 +221,7 @@ const Node = ({ basic, live, health, ping }: NodeProps) => {
         <p className="text-right font-mono text-muted-foreground">{used == null ? "—" : formatBytes(used)} / {formatBytes(basic.traffic_limit)}</p>
       </div>}
       {miningPill && <div className="flex justify-between gap-2 rounded-md bg-muted/50 p-2 text-xs"><span>{miningPill.name}</span><span className={cn("font-mono", miningPill.up ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400")}>{miningPill.metric}</span></div>}
+      {parseNodeProjects(basic.public_remark).length > 0 && <div className="border-t pt-3"><NodeProjects publicRemark={basic.public_remark} showLabel /></div>}
       <NodePingDetails basic={basic} />
       <div className="border-t pt-3"><PriceTags price={basic.price} billing_cycle={basic.billing_cycle} expired_at={basic.expired_at} currency={basic.currency} tags={basic.tags} ip4={basic.ipv4} ip6={basic.ipv6} compact /></div>
     </div>}

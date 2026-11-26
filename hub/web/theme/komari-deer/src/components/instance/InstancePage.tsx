@@ -11,6 +11,8 @@ import { useNodeList } from "@/contexts/NodeListContext";
 import { liveDataToRecords } from "@/utils/RecordHelper";
 import LoadChart from "./LoadChart";
 import PingChart from "./PingChart";
+import { NodeProjects } from "@/components/NodeProjects";
+import { parseNodeProjects } from "@/lib/nodeProjects";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 
 // Import DetailsGrid as client-only to prevent hydration mismatch with i18n
@@ -74,7 +76,7 @@ export default function InstancePage({ uuid }: InstancePageProps) {
     <div className="flex flex-col items-center gap-6 p-4 w-full max-w-[1400px] mx-auto">
       {/* Header Section */}
       <Card className="w-full">
-        <CardHeader className="flex flex-row items-center gap-4 py-6">
+        <CardHeader className="flex flex-row flex-wrap items-center gap-4 py-6">
           <div className="flex items-center gap-2">
              <Flag flag={node?.region ?? ""} />
              <h1 className="text-2xl font-bold tracking-tight">
@@ -85,6 +87,11 @@ export default function InstancePage({ uuid }: InstancePageProps) {
              {node?.uuid}
           </div>
         </CardHeader>
+        {parseNodeProjects(node?.public_remark).length > 0 && (
+          <CardContent className="border-t pt-4 pb-5">
+            <NodeProjects publicRemark={node?.public_remark} showLabel />
+          </CardContent>
+        )}
       </Card>
 
       {/* Details Grid */}

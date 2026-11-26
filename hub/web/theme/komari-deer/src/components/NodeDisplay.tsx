@@ -9,6 +9,7 @@ import type { LiveData } from "@/types/LiveData";
 import { aggregateHealth, getNodeHealth, matchesHealthFilter, type HealthFilter, type NodeStatus } from "@/lib/dashboard";
 import { emptyPingStats, summarizeLivePing } from "@/lib/ping";
 import { NodeGrid, type DashboardNode } from "./Node";
+import { matchesNodeSearch } from "@/lib/nodeProjects";
 import { isRegionMatch } from "@/utils/regionHelper";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,14 +45,11 @@ const NodeDisplay = ({ nodes, liveData, isLive, children }: NodeDisplayProps) =>
   }, [nodes, liveData, isLive, metadata.types]);
   const totals = useMemo(() => aggregateHealth(Array.from(summaries.values(), (item) => item.health)), [summaries]);
   const filteredNodes = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
     return sortedNodes.filter((node) => {
       const health = summaries.get(node.uuid)!.health;
       if (group !== "all" && node.group !== group) return false;
       if (!matchesHealthFilter(health, filter)) return false;
-      if (!term) return true;
-      const statusMatch = ((term === "online" || term === "在线") && health.status === "online") || ((term === "offline" || term === "离线") && health.status === "offline");
-      return node.name.toLowerCase().includes(term) || node.os.toLowerCase().includes(term) || node.arch.toLowerCase().includes(term) || isRegionMatch(node.region, term) || (!Number.isNaN(Number(term)) && node.price.toString().includes(term)) || statusMatch;
+      return matchesNodeSearch(node, searchTerm, health.status, isRegionMatch);
     });
   }, [sortedNodes, summaries, group, filter, searchTerm]);
 

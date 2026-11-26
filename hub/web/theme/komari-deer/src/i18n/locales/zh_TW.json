@@ -379,6 +379,8 @@
     "load": "負載",
     "monitoring": "監控資訊",
     "name": "節點名稱",
+    "noProjects": "暫無登記專案",
+    "projects": "部署專案",
     "networkDownloadSpeed": "下載速度",
     "networkSpeed": "網路",
     "monthlyTraffic": "本月流量",
@@ -467,7 +469,7 @@
   "save": "保存",
   "search": {
     "no_results": "未找到匹配的伺服器",
-    "placeholder": "搜尋節點名稱、地區、系統...",
+    "placeholder": "搜尋節點名稱、地區、系統、部署專案...",
     "results": "找到 {{count}} 個伺服器，共 {{total}} 個",
     "try_different": "嘗試不同的搜尋關鍵詞"
   },

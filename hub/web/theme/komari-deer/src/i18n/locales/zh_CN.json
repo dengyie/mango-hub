@@ -409,6 +409,8 @@
     "load": "负载",
     "monitoring": "监控信息",
     "name": "节点名称",
+    "noProjects": "暂无登记项目",
+    "projects": "部署项目",
     "networkDownloadSpeed": "下载速度",
     "networkSpeed": "网络",
     "monthlyTraffic": "本月流量",
@@ -561,7 +563,7 @@
   "save": "保存",
   "search": {
     "no_results": "未找到匹配的服务器",
-    "placeholder": "搜索节点名称、地区、系统...",
+    "placeholder": "搜索节点名称、地区、系统、部署项目...",
     "results": "找到 {{count}} 个服务器，共 {{total}} 个",
     "try_different": "尝试不同的搜索关键词"
   },

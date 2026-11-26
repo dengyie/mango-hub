@@ -379,6 +379,8 @@
     "load": "Load",
     "monitoring": "Monitoring",
     "name": "Node Name",
+    "noProjects": "No projects listed",
+    "projects": "Deployed Projects",
     "networkDownloadSpeed": "Download Speed",
     "networkSpeed": "Net Spd",
     "monthlyTraffic": "Monthly Traffic",
@@ -467,7 +469,7 @@
   "save": "Save",
   "search": {
     "no_results": "No matching servers found",
-    "placeholder": "Search nodes by name, region, OS...",
+    "placeholder": "Search nodes by name, region, OS, project...",
     "results": "Found {{count}} server out of {{total}}",
     "try_different": "Try different search keywords"
   },
