@@ -20,6 +20,27 @@ var testTargets = []struct {
 	{"117.185.125.154:80"},
 }
 
+func TestUsePrivilegedICMP(t *testing.T) {
+	tests := []struct {
+		name string
+		goos string
+		raw  bool
+		want bool
+	}{
+		{name: "linux defaults to UDP", goos: "linux", want: false},
+		{name: "linux raw opt-in", goos: "linux", raw: true, want: true},
+		{name: "windows remains privileged", goos: "windows", want: true},
+		{name: "darwin uses system ping", goos: "darwin", raw: true, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := usePrivilegedICMP(tt.goos, tt.raw); got != tt.want {
+				t.Fatalf("usePrivilegedICMP(%q, %t) = %t, want %t", tt.goos, tt.raw, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestICMPPing(t *testing.T) {
 	timeout := 3 * time.Second
 	for _, tt := range testTargets {

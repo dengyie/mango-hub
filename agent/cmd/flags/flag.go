@@ -32,6 +32,9 @@ type Config struct {
 	// use the process cgroup quota (Docker / Pterodactyl) instead of host /proc.
 	// No-op when the cgroup is unlimited. Env: AGENT_PREFER_CGROUP_LIMITS=true|1
 	PreferCgroupLimits bool `json:"prefer_cgroup_limits" env:"AGENT_PREFER_CGROUP_LIMITS" flag:"prefer-cgroup-limits"`
+	// RawICMP enables privileged raw-socket ICMP on Linux. It is opt-in because
+	// the default UDP-based probe works for unprivileged Linux deployments.
+	RawICMP bool `json:"raw_icmp" env:"AGENT_RAW_ICMP" flag:"raw-icmp"`
 	// Optional hard overrides when cgroup is missing/unlimited (bytes / fractional cores).
 	ForceMemoryTotal   uint64  `json:"force_memory_total" env:"AGENT_FORCE_MEMORY_TOTAL" flag:"force-memory-total"`          // 强制内存总量（面板配额，字节）
 	ForceCPUQuotaCores float64 `json:"force_cpu_quota_cores" env:"AGENT_FORCE_CPU_QUOTA_CORES" flag:"force-cpu-quota-cores"` // 强制 CPU 配额核数（可为小数）

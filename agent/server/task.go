@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	pkg_flags "github.com/dengyie/mangohub/agent/cmd/flags"
 	"github.com/dengyie/mangohub/agent/dnsresolver"
 	"github.com/dengyie/mangohub/agent/ws"
 	v2 "github.com/dengyie/mangohub/protocol/v2"
@@ -221,6 +222,10 @@ func resolveIP(target string) (string, error) {
 	return addrs[0], nil // 返回第一个解析的 IP
 }
 
+func usePrivilegedICMP(goos string, rawICMP bool) bool {
+	return goos == "windows" || (goos == "linux" && rawICMP)
+}
+
 func icmpPing(target string, timeout time.Duration) (int64, error) {
 	host, _, err := net.SplitHostPort(target)
 	if err != nil {
@@ -250,26 +255,17 @@ func icmpPing(target string, timeout time.Duration) (int64, error) {
 	}
 	pinger.Count = 1
 	pinger.Timeout = timeout
-	// 非特权 UDP ICMP：agent 常以非 root 运行（Azure/Beszel 型原生进程、Pterodactyl 容器），
-	// raw socket 需要 CAP_NET_RAW 会全丢包；udp4 无特权零配置，且不依赖系统 ping_group_range。
-	// 各节点实测（2026-08-13）：1.1.1.1 / 223.5.5.5 / vps.mangoqwq.com 三目标全通（Linux/macOS）。
-	//
-	// Windows 例外：pro-bing 的 unprivileged UDP-based ping 在 Windows 上静默失效
-	//（接收不到 ICMP echo reply → 永远 loss 100%），必须改用 privileged 原始 ICMP socket。
-	// Windows 上 agent 以 schtasks /rl highest（管理员）后台任务运行，有权限走 ip4:icmp。
-	// 2026-08-16 实测：仅 Linux/macOS 用 UDP，Windows 用 privileged。
-	windowsPrivilegedICMP := runtime.GOOS == "windows"
-	if windowsPrivilegedICMP {
-		pinger.SetPrivileged(true)
-	} else {
-		pinger.SetPrivileged(false)
-	}
+	// Linux defaults to unprivileged UDP ICMP so non-root agents need no extra capability.
+	// Raw ICMP is an explicit opt-in for environments that provide CAP_NET_RAW.
+	// Windows requires privileged raw ICMP; Darwin uses systemPing above.
+	privilegedICMP := usePrivilegedICMP(runtime.GOOS, pkg_flags.GlobalConfig.RawICMP)
+	pinger.SetPrivileged(privilegedICMP)
 	err = pinger.Run()
 	if err != nil {
 		// Windows 上 privileged raw ICMP 需要管理员权限（schtasks /rl highest）。
 		// 若任务退化到普通用户运行，ListenPacket("ip4:icmp") 会直接失败——给出明确诊断，
 		// 然后降级试一次非特权 UDP（Windows 非特权通常也收不到回包，但至少区分权限 vs 网络故障）。
-		if windowsPrivilegedICMP {
+		if runtime.GOOS == "windows" {
 			log.Printf("Ping task: privileged ICMP failed on Windows (agent may not be running as admin): %v; retrying unprivileged", err)
 			pinger2, p2err := ping.NewPinger(ip)
 			if p2err != nil {

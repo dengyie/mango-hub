@@ -228,6 +228,7 @@ func init() {
 	RootCmd.PersistentFlags().BoolVar(&flags.DisableCompression, "disable-compression", false, "Disable v2 gzip/permessage-deflate compression")
 	RootCmd.PersistentFlags().StringVar(&flags.PreferIPVersion, "prefer-ip-version", "", "Prefer IP version for dashboard connections: 4 or 6")
 	RootCmd.PersistentFlags().BoolVar(&flags.PreferCgroupLimits, "prefer-cgroup-limits", false, "Prefer Linux cgroup memory/CPU quotas (container/Pterodactyl) over host /proc")
+	RootCmd.PersistentFlags().BoolVar(&flags.RawICMP, "raw-icmp", false, "Use privileged raw-socket ICMP on Linux (requires CAP_NET_RAW)")
 	RootCmd.PersistentFlags().Uint64Var(&flags.ForceMemoryTotal, "force-memory-total", 0, "Override mem_total in bytes when cgroup is unlimited (panel quota)")
 	RootCmd.PersistentFlags().Float64Var(&flags.ForceCPUQuotaCores, "force-cpu-quota-cores", 0, "Override cpu cores (fractional ok) when cgroup is unlimited (panel quota)")
 	RootCmd.PersistentFlags().Uint64Var(&flags.ForceDiskTotal, "force-disk-total", 0, "Override disk total in bytes (panel quota)")

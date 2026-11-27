@@ -18,6 +18,7 @@ func TestConfigPrecedence(t *testing.T) {
 		Token:    "file_token",
 		Endpoint: "https://file.endpoint.com",
 		Interval: 10.0,
+		RawICMP:  true,
 	}
 	fileBytes, err := json.Marshal(fileCfg)
 	if err != nil {
@@ -36,6 +37,7 @@ func TestConfigPrecedence(t *testing.T) {
 		cmd.Flags().String("token", "", "")
 		cmd.Flags().String("endpoint", "", "")
 		cmd.Flags().Float64("interval", 3.0, "")
+		cmd.Flags().Bool("raw-icmp", false, "")
 		_ = cmd.Flags().Set("token", "cli_token") // explicitly set on CLI
 
 		flags = &pkg_flags.Config{
@@ -59,14 +61,19 @@ func TestConfigPrecedence(t *testing.T) {
 		if flags.Interval != 10.0 {
 			t.Fatalf("expected Config File interval 10.0 to win, got %f", flags.Interval)
 		}
+		if !flags.RawICMP {
+			t.Fatal("expected Config File raw_icmp to be enabled")
+		}
 	})
 
 	// 2. Test ENV wins over Config File when CLI not passed
 	t.Run("ENV_Wins_Over_File", func(t *testing.T) {
 		t.Setenv("AGENT_TOKEN", "env_token_2")
+		t.Setenv("AGENT_RAW_ICMP", "false")
 
 		cmd := &cobra.Command{}
 		cmd.Flags().String("token", "", "")
+		cmd.Flags().Bool("raw-icmp", false, "")
 
 		flags = &pkg_flags.Config{
 			ConfigFile: configFile,
@@ -79,6 +86,9 @@ func TestConfigPrecedence(t *testing.T) {
 
 		if flags.Token != "env_token_2" {
 			t.Fatalf("expected ENV token %q to win over file, got %q", "env_token_2", flags.Token)
+		}
+		if flags.RawICMP {
+			t.Fatal("expected AGENT_RAW_ICMP=false to override Config File")
 		}
 	})
 
