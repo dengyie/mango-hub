@@ -19,7 +19,10 @@ type report struct {
 	Disk        usageReport       `json:"disk"`
 	DiskIO      []unit.DiskIOStat `json:"disk_io,omitempty"`
 	Mining      *unit.MinerStat   `json:"mining,omitempty"`
-	Network     networkReport     `json:"network"`
+	// Governor 是 power_governor 自适应功率档位,刻意放在报告顶层而不是 mining 内:
+	// pause 档会停掉矿工服务、mining 整体缺失,档位必须独立存活才能被面板看到。
+	Governor    *unit.GovernorStat `json:"governor,omitempty"`
+	Network     networkReport      `json:"network"`
 	Connections connectionsReport `json:"connections"`
 	GPU         interface{}       `json:"gpu,omitempty"`
 	Uptime      uint64            `json:"uptime"`
@@ -72,6 +75,10 @@ type gpuDeviceReport struct {
 	Temperature uint64  `json:"temperature"`
 }
 
+// StartGovernorCollector 启动独立的自适应功率档位采集(不依赖 --miner-api-url)。
+// 由 agent 启动阶段调用;非 Windows 且未配置 AGENT_GOVERNOR_STATE 时为空操作。
+func StartGovernorCollector() { unit.StartGovernorCollector() }
+
 func GenerateReport() []byte {
 	message := ""
 	data := report{}
@@ -98,6 +105,8 @@ func GenerateReport() []byte {
 
 	// 矿工状态：配置了 AGENT_MINER_API_URL 才采集（未配置时 Miner 返回 nil，不上报该字段）
 	data.Mining = unit.Miner()
+	// 挡位只依赖本机 state.json,与矿工 API 死活无关,单独上报(协议 Report.governor 顶层字段)
+	data.Governor = unit.Governor()
 
 	totalUp, totalDown, networkUp, networkDown, err := unit.NetworkSpeed()
 	if err != nil {

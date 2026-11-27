@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -29,6 +31,152 @@ type MinerStat struct {
 	SharesInvalid int64   `json:"shares_invalid"`
 	HwErrors      int64   `json:"hw_errors"`
 	PoolLatency   int64   `json:"pool_latency"`
+}
+
+// GovernorStat 是 power_governor 档位快照的线上形态(hub 侧与之同构)。
+type GovernorStat struct {
+	Tier        string  `json:"tier"` // full | eco | pause
+	IdleSec     int64   `json:"idle_sec"`
+	GpuPct      float64 `json:"gpu_pct"`
+	PausedByGov bool    `json:"paused_by_gov"`
+}
+
+// governorState 是 state.json 的原始结构(PowerShell ConvertTo-Json 产出 camelCase)。
+type governorState struct {
+	Tier        string  `json:"tier"`
+	Since       string  `json:"since"`
+	IdleSec     int64   `json:"idleSec"`
+	GpuPct      float64 `json:"gpuPct"`
+	PausedByGov bool    `json:"pausedByGov"`
+}
+
+const (
+	// governorStateEnv 覆盖 state.json 路径(测试与非默认部署用)。
+	governorStateEnv = "AGENT_GOVERNOR_STATE"
+	// governorStateDefault 是两机生产部署的固定路径。
+	governorStateDefault = `D:\program\srbminer\governor\state.json`
+	// governorStaleAfter 超过该时长未更新即视为调节器已停(daemon 每 10s 写一次)。
+	governorStaleAfter = 45 * time.Second
+	// governorCollectionInterval 档位轮询间隔,与调节器 daemon 的写盘节奏一致。
+	governorCollectionInterval = 10 * time.Second
+)
+
+// governorStatePath 返回 state.json 路径;非 Windows 且未显式配置时返回 ""(不采集)。
+func governorStatePath() string {
+	if p := strings.TrimSpace(os.Getenv(governorStateEnv)); p != "" {
+		return p
+	}
+	if runtime.GOOS == "windows" {
+		return governorStateDefault
+	}
+	return ""
+}
+
+// readGovernorState 读取并校验档位快照。不存在 / 过期 / 解析失败 / 无 tier 一律返回 nil:
+// 宁可不上报,也不把陈旧档位当成现状展示。
+func readGovernorState() *GovernorStat {
+	path := governorStatePath()
+	if path == "" {
+		return nil
+	}
+	fi, err := os.Stat(path)
+	if err != nil || time.Since(fi.ModTime()) > governorStaleAfter {
+		return nil
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	// PowerShell 5.1 的 Set-Content -Encoding UTF8 会写 BOM,json 解析前必须剥掉。
+	text := strings.TrimPrefix(string(raw), "\ufeff")
+	var st governorState
+	if err := json.Unmarshal([]byte(text), &st); err != nil {
+		// 容错: 历史上出现过 state.json 被写成数组(函数返回值污染)→ 取最后一个含 tier 的元素。
+		var arr []governorState
+		if json.Unmarshal([]byte(text), &arr) != nil {
+			return nil
+		}
+		for i := len(arr) - 1; i >= 0; i-- {
+			if strings.TrimSpace(arr[i].Tier) != "" {
+				st = arr[i]
+				break
+			}
+		}
+	}
+	if strings.TrimSpace(st.Tier) == "" {
+		return nil
+	}
+	return &GovernorStat{Tier: st.Tier, IdleSec: st.IdleSec, GpuPct: st.GpuPct, PausedByGov: st.PausedByGov}
+}
+
+// ---------------------------------------------------------------------------
+// governor 与矿工采集解耦:档位是「本机调节器」的状态,不是「矿工进程」的状态。
+// pause 档(让卡)会把 srbminer 服务停掉 → 矿工 API 死亡 → 若档位挂在
+// MinerStat 里,Miner() 连败后返回 nil 会把档位一起扔掉,网页恰好在该显示
+// 「暂停/让卡」的时刻变成无徽标。故档位单独缓存、每个采集周期无条件刷新、
+// 由 Governor() 独立出口上报(protocol Report.governor 顶层字段)。
+// ---------------------------------------------------------------------------
+
+var (
+	// lastGovernor 最近一次读到的档位;lastGovernorAt 记录其获取时刻。
+	// 文件短暂缺失/读失败时保留旧值,Governor() 用 lastGovernorAt 判定是否还新鲜。
+	lastGovernor   *GovernorStat
+	lastGovernorAt time.Time
+)
+
+// refreshGovernorLocked 无条件刷新档位缓存(调用方须已持有 minerMu)。
+// 成功读到 → 更新缓存;文件过期/缺失/解析失败 → 保留旧值到其自身时效截止,
+// 避免调节器一次瞬时写失败就把档位从页面抹掉。
+func refreshGovernorLocked() {
+	if g := readGovernorState(); g != nil {
+		lastGovernor = g
+		lastGovernorAt = time.Now()
+	}
+}
+
+// Governor 返回最近一次有效档位(带自身时效判定),与矿工 API 是否存活无关。
+// 未采集过 / 超过 governorStaleAfter 未更新 → nil。
+func Governor() *GovernorStat {
+	minerMu.Lock()
+	defer minerMu.Unlock()
+	if lastGovernor == nil {
+		return nil
+	}
+	if time.Since(lastGovernorAt) > governorStaleAfter {
+		return nil
+	}
+	return lastGovernor
+}
+
+// refreshGovernor 自行加锁刷新档位缓存,供独立的后台采集器调用。
+func refreshGovernor() {
+	minerMu.Lock()
+	defer minerMu.Unlock()
+	refreshGovernorLocked()
+}
+
+// StartGovernorCollector 启动档位采集 goroutine。与 StartMinerCollector 相互独立:
+// 档位来自本机 state.json,不依赖 --miner-api-url 是否配置。此前只在矿工采集失败/
+// 成功分支里顺带刷新,没配矿工 API 的机器上档位就永远读不到——那正是「有调节器却
+// 没有徽标」的又一条静默失败路径。
+//
+// 未配置路径(非 Windows 且无 AGENT_GOVERNOR_STATE)时不启动,Linux 节点零开销。
+// 幂等(sync.Once);goroutine 随进程常驻。
+func StartGovernorCollector() {
+	if governorStatePath() == "" {
+		return
+	}
+	governorCollectorOnce.Do(func() {
+		go func() {
+			log.Printf("[governor] collector started, polling %s every %s", governorStatePath(), governorCollectionInterval)
+			refreshGovernor() // 立即读一次,避免首个周期无徽标
+			ticker := time.NewTicker(governorCollectionInterval)
+			defer ticker.Stop()
+			for range ticker.C {
+				refreshGovernor()
+			}
+		}()
+	})
 }
 
 // srbStatus 是 SRBMiner /api/v2/status 的响应子集；多余字段忽略。
@@ -93,6 +241,8 @@ var (
 	// minerCollectorOnce 保证采集 goroutine 只启动一次：重复调用（如配置
 	// 重载路径误触发）会叠加 ticker 造成并发写共享快照与请求翻倍。
 	minerCollectorOnce sync.Once
+	// governorCollectorOnce 同理,保护独立的档位采集 goroutine。
+	governorCollectorOnce sync.Once
 )
 
 // StartMinerCollector 在后台轮询 SRBMiner API 并维护最新快照。url 为空时不启动（无上报）。
@@ -122,9 +272,12 @@ func collectMinerOnce(url string) {
 	stat, err := fetchMinerStat(url)
 	minerMu.Lock()
 	defer minerMu.Unlock()
+	// 档位先刷:它只依赖本机 state.json,不受矿工 API 死活影响。
+	// 放在 err 分支之前,保证 pause 档(服务已被停)时档位照样新鲜。
+	refreshGovernorLocked()
 	if err != nil {
 		minerFetchFails++
-		// 每次失败都打日志太吵，只在阈值附近打（首批 + 达到阈值那次）。
+		// 每次失败都打日志太吵,只在阈值附近打(首批 + 达到阈值那次)。
 		if minerFetchFails <= minerMaxFails || minerFetchFails == minerMaxFails+1 {
 			log.Printf("[miner] fetch failed (%d consecutive): %v", minerFetchFails, err)
 		}

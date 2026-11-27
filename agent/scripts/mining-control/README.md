@@ -15,6 +15,16 @@ Mangohub（hub）通过 `agent.mining.control` 下发 `start|stop`，agent 将 a
 `miner_control_cmd`（home-win 用 `nssm {action} srbminer`；laptop 的 nssm 不在 PATH，
 必须用全路径 `\"D:\\program\\nssm\\nssm.exe\" {action} srbminer`）。
 
+### Windows 节点：自适应功率调节器 + 托盘（`windows/`）
+
+home-win / laptop-win 另有一套**本地**调节器（空闲 100% / 人在用 70% / 重 GPU 应用临时停挖）
+与托盘菜单，源码在 `windows/`，部署到 `D:\program\srbminer\`。它与上面的中心端
+`start|stop` 管控**互不冲突**：中心端管「挖不挖」，调节器管「挖的时候给多少功耗 / 什么时候让卡」。
+
+编码硬约束：`.ps1` = UTF-8 **BOM** + LF；`.vbs` = **CRLF + 纯 ASCII**（目录内 `.gitattributes`
+已用 `-text` 锁死，禁止 Git 改写）。部署/升级/回滚、计划任务定义与踩坑约束见
+[`windows/README.md`](windows/README.md)。
+
 ## 关键约束（踩坑沉淀，改动前必读）
 
 1. **spawn 子进程必须关闭锁 fd**（jtzval 脚本 `9>&-`）：矿机继承 flock 后，脚本退出

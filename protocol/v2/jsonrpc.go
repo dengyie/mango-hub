@@ -99,12 +99,16 @@ type Report struct {
 	Connections ConnectionsReport `json:"connections"`
 	GPU         *GPUDetailReport  `json:"gpu,omitempty"`
 	Mining      *MiningReport     `json:"mining,omitempty"`
-	DiskIO      []DiskIOReport    `json:"disk_io,omitempty"`
-	Uptime      int64             `json:"uptime"`
-	Process     int               `json:"process"`
-	Message     string            `json:"message"`
-	Method      string            `json:"method,omitempty"`
-	UpdatedAt   time.Time         `json:"updated_at"`
+	// Governor 是 power_governor 自适应功率档位。刻意独立于 Mining:调节器进
+	// pause 档会停掉矿工服务,mining 整体缺失,若档位嵌在 mining 里就会在
+	// 最该显示「暂停(让卡)」的时刻从面板消失。
+	Governor  *GovernorReport  `json:"governor,omitempty"`
+	DiskIO    []DiskIOReport   `json:"disk_io,omitempty"`
+	Uptime    int64            `json:"uptime"`
+	Process   int              `json:"process"`
+	Message   string           `json:"message"`
+	Method    string           `json:"method,omitempty"`
+	UpdatedAt time.Time        `json:"updated_at"`
 }
 
 type CPUReport struct {
@@ -173,6 +177,18 @@ type MiningReport struct {
 	SharesInvalid int64   `json:"shares_invalid"`
 	HwErrors      int64   `json:"hw_errors"`
 	PoolLatency   int64   `json:"pool_latency"`
+	// Governor 是**过渡期兼容路径**:2026-11-27 起 agent 把档位提升到 Report 顶层
+	// (pause 档停矿工时 mining 缺失会连档位一起丢掉)。这里保留解析只为滚动升级
+	// 期间旧 agent 仍能被识别;两端都升到新版本后可删除。
+	Governor *GovernorReport `json:"governor,omitempty"`
+}
+
+// GovernorReport 自适应功率档位快照(与 agent monitoring.GovernorStat 同构)。
+type GovernorReport struct {
+	Tier        string  `json:"tier"` // full | eco | pause
+	IdleSec     int64   `json:"idle_sec"`
+	GpuPct      float64 `json:"gpu_pct"`
+	PausedByGov bool    `json:"paused_by_gov"`
 }
 
 // DiskIOReport 单块磁盘的 IO 速率（字节/秒、次/秒）

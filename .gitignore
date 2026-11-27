@@ -33,3 +33,6 @@ hub/web/admin/dist/
 agent/build/
 hub/build/
 data/
+
+# 误落在仓库根的 hub/web 镜像副本（真身在 hub/web，勿提交）
+/web/

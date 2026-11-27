@@ -1,0 +1,3 @@
+*.ps1 -text
+*.vbs -text
+*.xml -text

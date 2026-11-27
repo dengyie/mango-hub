@@ -155,6 +155,9 @@ var RootCmd = &cobra.Command{
 		// 后台采集矿工状态（AGENT_MINER_API_URL 未配置时不启动）。独立 goroutine，
 		// 与上报热路径解耦：Miner() 只非阻塞读缓存，矿工 API 慢/挂不影响其他指标上报。
 		monitoring.StartMinerCollector(flags.MinerAPIUrl)
+		// 自适应功率档位单独采集：它读本机 state.json，与矿工 API 是否配置/存活无关。
+		// 若挂在矿工采集里，没配 miner-api-url 的机器就永远没有档位（静默无徽标）。
+		monitoring.StartGovernorCollector()
 		for {
 			server.UpdateBasicInfo()
 			server.EstablishWebSocketConnection()
