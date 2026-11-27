@@ -314,19 +314,22 @@ const NodeTable: React.FC<NodeTableProps> = ({ nodes, liveData, isLive, summarie
                       <Flag flag={node.region} />
                       <a
                         href={`#/instance/${node.uuid}`}
-                        className="rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-primary"
+                        className="group rounded-sm focus-visible:outline-2 focus-visible:outline-primary"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <div className="flex flex-col">
-                          <span className="font-medium text-sm truncate max-w-[200px]">
+                          <span className="font-medium text-sm truncate max-w-[200px] group-hover:underline">
                             {node.name}
                           </span>
                           <span className="text-xs text-muted-foreground">
                             {isOnline ? formatUptime(nodeData.uptime, t) : t(`dashboard.${health.status}`)}
                           </span>
-                          {parseNodeProjects(node.public_remark).length > 0 && (
-                            <NodeProjects publicRemark={node.public_remark} compact maxVisible={2} className="mt-1 max-w-[200px]" />
-                          )}
+                          {(() => {
+                            const projects = parseNodeProjects(node.public_remark);
+                            return projects.length > 0 ? (
+                              <NodeProjects projects={projects} compact maxVisible={2} className="mt-1 max-w-[200px]" />
+                            ) : null;
+                          })()}
                         </div>
                       </a>
                     </div>

@@ -21,6 +21,17 @@ export function EditDialog({ item }: { item: z.infer<typeof schema> }) {
   const [loading, setLoading] = React.useState(false);
   const [open, setOpen] = React.useState(false);
 
+  React.useEffect(() => {
+    if (!open) return;
+    setForm({
+      name: item.name || "",
+      token: item.token || "",
+      remark: item.remark || "",
+      public_remark: item.public_remark || "",
+      weight: item.weight || 0,
+    });
+  }, [open, item]);
+
   const refreshTable = React.useContext(DataTableRefreshContext);
 
   function saveClientData(

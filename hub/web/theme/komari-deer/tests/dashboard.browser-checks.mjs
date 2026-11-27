@@ -25,6 +25,11 @@ async (page) => {
     results.filters.push({name,count});
   }
   const search = page.getByRole("textbox",{name:"Search nodes",exact:true});
+  check((await cards.first().innerText()).includes("MangoHub"), "Deployed project pill missing on collapsed card");
+  check((await cards.first().innerText()).includes("+2"), "Collapsed card overflow project counter missing");
+  check((await cards.nth(2).innerText()).includes("No projects listed"), "Empty project placeholder missing");
+  await search.fill("picbed");
+  check(await cards.count() === 1, "Search by deployed project failed");
   await search.fill("tokyo");
   check(await cards.count() === 1, "Search did not narrow nodes");
   await search.press("/");

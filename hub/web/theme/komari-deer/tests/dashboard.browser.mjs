@@ -11,9 +11,19 @@ async (page) => {
   const GiB = 1024 ** 3;
   const names = ["Hong Kong · Compute", "Tokyo · Storage", "Frankfurt · Packet loss", "London · Offline", "Singapore · New node", "California · HTTP only", "Sydney · Missing metrics", "Osaka · Healthy"];
   const regions = ["🇭🇰", "🇯🇵", "🇩🇪", "🇬🇧", "🇸🇬", "🇺🇸", "🇦🇺", "🇯🇵"];
+  const publicRemarks = [
+    "MangoHub, 挖矿中枢(gost), miner-knock, content-provenance",
+    "MangoDrive, picbed, game-auto-framework",
+    "",
+    "muse-site, sing-box(Reality)",
+    "WARP节点",
+    "Emby, MediaWarp",
+    "",
+    "awesome-ui, EasyTier节点",
+  ];
   const nodes = Object.fromEntries(names.map((name, index) => {
     const uuid = index === 0 ? "cd520e0b-bb1a-456e-b58c-7814f83c78f6" : `qa-node-${index}`;
-    return [uuid, { uuid, name, region: regions[index], cpu_name: "AMD EPYC", cpu_cores: 4, mem_total: 4 * GiB, disk_total: 40 * GiB, swap_total: GiB, arch: "amd64", os: "Debian", virtualization: "kvm", kernel_version: "6.1", gpu_name: "", group: index < 4 ? "Production" : "Lab", weight: index, price: 5, currency: "$", billing_cycle: 30, tags: "KVM;SSD", traffic_limit: 1024 * GiB, traffic_limit_type: "sum", updated_at: "2026-10-11T00:00:00Z", expired_at: "2027-10-11T00:00:00Z", ipv4: "192.0.2.1" }];
+    return [uuid, { uuid, name, region: regions[index], cpu_name: "AMD EPYC", cpu_cores: 4, mem_total: 4 * GiB, disk_total: 40 * GiB, swap_total: GiB, arch: "amd64", os: "Debian", virtualization: "kvm", kernel_version: "6.1", gpu_name: "", group: index < 4 ? "Production" : "Lab", weight: index, price: 5, currency: "$", billing_cycle: 30, tags: "KVM;SSD", public_remark: publicRemarks[index], traffic_limit: 1024 * GiB, traffic_limit_type: "sum", updated_at: "2026-10-11T00:00:00Z", expired_at: "2027-10-11T00:00:00Z", ipv4: "192.0.2.1" }];
   }));
   const task = (name, loss, avg) => ({ name, loss, avg, min: avg, max: avg, latest: avg, tail: 0 });
   const live = Object.fromEntries(Object.values(nodes).filter((_node, index) => index !== 4).map((node) => {

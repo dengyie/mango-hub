@@ -178,6 +178,7 @@ const Node = ({ basic, live, health, ping }: NodeProps) => {
   const miningPill = miningStatusPill(mining);
   const network = current && live?.validMetrics?.network !== false ? live?.network : undefined;
   const trafficType = basic.traffic_limit_type ?? "sum";
+  const projects = parseNodeProjects(basic.public_remark);
   const used = network ? getTrafficUsed(network.totalUp, network.totalDown, trafficType) : null;
   const percentage = network ? getTrafficPercentage(network.totalUp, network.totalDown, basic.traffic_limit, trafficType) : 0;
   const reportTime = live?.updated_at ? Date.parse(live.updated_at) : NaN;
@@ -203,7 +204,7 @@ const Node = ({ basic, live, health, ping }: NodeProps) => {
       <p className="mt-2 h-4 truncate text-[11px] leading-4 text-muted-foreground" title={health.unknown ? t(current ? "dashboard.noProbeData" : "dashboard.staleNode") : undefined}>
         {health.unknown ? t(current ? "dashboard.noProbeData" : "dashboard.staleNode") : !current && t("dashboard.offline")}
       </p>
-      <NodeProjects publicRemark={basic.public_remark} compact maxVisible={2} className="mt-1.5" />
+      <NodeProjects projects={projects} compact maxVisible={2} className="mt-1.5" />
       <Button variant="ghost" className="mt-auto h-9 w-full shrink-0 justify-between px-0 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground" aria-expanded={expanded} aria-controls={`details-${basic.uuid}`} onClick={() => setExpanded((value) => !value)}>
         <span>{t(expanded ? "dashboard.hideDetails" : "dashboard.details")}</span><ChevronDown className={cn("h-4 w-4 transition-transform", expanded && "rotate-180")} />
       </Button>
@@ -221,7 +222,7 @@ const Node = ({ basic, live, health, ping }: NodeProps) => {
         <p className="text-right font-mono text-muted-foreground">{used == null ? "—" : formatBytes(used)} / {formatBytes(basic.traffic_limit)}</p>
       </div>}
       {miningPill && <div className="flex justify-between gap-2 rounded-md bg-muted/50 p-2 text-xs"><span>{miningPill.name}</span><span className={cn("font-mono", miningPill.up ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400")}>{miningPill.metric}</span></div>}
-      {parseNodeProjects(basic.public_remark).length > 0 && <div className="border-t pt-3"><NodeProjects publicRemark={basic.public_remark} showLabel /></div>}
+      {projects.length > 0 && <div className="border-t pt-3"><NodeProjects projects={projects} showLabel /></div>}
       <NodePingDetails basic={basic} />
       <div className="border-t pt-3"><PriceTags price={basic.price} billing_cycle={basic.billing_cycle} expired_at={basic.expired_at} currency={basic.currency} tags={basic.tags} ip4={basic.ipv4} ip6={basic.ipv6} compact /></div>
     </div>}

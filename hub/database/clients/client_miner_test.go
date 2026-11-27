@@ -240,6 +240,47 @@ func TestApplyClientInfoUpdateRollsBackWhenFlagWriteFails(t *testing.T) {
 	}
 }
 
+func TestPrepareAdminClientUpdateFiltersDisallowedColumns(t *testing.T) {
+	db := openMinerDB(t)
+	created := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	client := models.Client{
+		UUID:      "admin-filter-uuid",
+		Token:     "admin-filter-token",
+		Name:      "old-name",
+		CreatedAt: created,
+		UpdatedAt: created,
+	}
+	if err := db.Create(&client).Error; err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	clientUUID, filtered, err := prepareAdminClientUpdate(map[string]interface{}{
+		"uuid":          client.UUID,
+		"public_remark": "one-mail, OneImage",
+		"created_at":    time.Now().UTC(),
+		"evil_column":   "drop table",
+	})
+	if err != nil {
+		t.Fatalf("prepareAdminClientUpdate: %v", err)
+	}
+	if _, ok := filtered["created_at"]; ok {
+		t.Fatal("created_at should not be editable")
+	}
+	if _, ok := filtered["evil_column"]; ok {
+		t.Fatal("unknown column should be filtered out")
+	}
+	if err := saveClient(db, clientUUID, filtered); err != nil {
+		t.Fatalf("saveClient: %v", err)
+	}
+	got := reloadMinerClient(t, db, client.UUID)
+	if got.PublicRemark != "one-mail, OneImage" {
+		t.Fatalf("expected public_remark updated, got %q", got.PublicRemark)
+	}
+	if !got.CreatedAt.Equal(created) {
+		t.Fatalf("created_at mutated: got %v, want %v", got.CreatedAt, created)
+	}
+}
+
 func openMinerDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))

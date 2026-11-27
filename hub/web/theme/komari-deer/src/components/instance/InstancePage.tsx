@@ -35,6 +35,7 @@ export default function InstancePage({ uuid }: InstancePageProps) {
   
   // Find the node
   const node = nodeList?.find((n) => n.uuid === uuid);
+  const projects = parseNodeProjects(node?.public_remark);
 
   // Initial data loading
   useEffect(() => {
@@ -87,9 +88,9 @@ export default function InstancePage({ uuid }: InstancePageProps) {
              {node?.uuid}
           </div>
         </CardHeader>
-        {parseNodeProjects(node?.public_remark).length > 0 && (
+        {projects.length > 0 && (
           <CardContent className="border-t pt-4 pb-5">
-            <NodeProjects publicRemark={node?.public_remark} showLabel />
+            <NodeProjects projects={projects} showLabel />
           </CardContent>
         )}
       </Card>

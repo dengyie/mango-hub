@@ -9,20 +9,32 @@ import (
 
 // 测试GeoIP数据库的初始化和更新功能
 func TestMmdb(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping network GeoIP test in -short mode")
+	}
 	geoip.CurrentProvider, _ = geoip.NewMaxMindGeoIPService()
 	testIpAddr(t)
 }
 func TestIpApi(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping network GeoIP test in -short mode")
+	}
 	geoip.CurrentProvider, _ = geoip.NewIPAPIService()
 	testIpAddr(t)
 }
 
 func TestGeojs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping network GeoIP test in -short mode")
+	}
 	geoip.CurrentProvider, _ = geoip.NewGeoJSService()
 	testIpAddr(t)
 }
 
 func TestIpInfo(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping network GeoIP test in -short mode")
+	}
 	geoip.CurrentProvider, _ = geoip.NewIPInfoService()
 	testIpAddr(t)
 }
@@ -32,15 +44,13 @@ func testIpAddr(t *testing.T) {
 	ip := net.ParseIP(ipaddr)
 	record, err := geoip.GetGeoInfo(ip)
 	if err != nil {
-		t.Errorf("Failed to get GeoIP info for IP %s: %v", ipaddr, err)
+		t.Fatalf("Failed to get GeoIP info for IP %s: %v", ipaddr, err)
 	}
-
-	if record != nil {
-		if record.ISOCode == "" && record.Name == "" {
-			t.Errorf("Country information is missing for IP %s", ipaddr)
-		}
-	} else {
-		t.Errorf("GeoIP record is nil for IP %s", ipaddr)
+	if record == nil {
+		t.Fatalf("GeoIP record is nil for IP %s", ipaddr)
+	}
+	if record.ISOCode == "" && record.Name == "" {
+		t.Errorf("Country information is missing for IP %s", ipaddr)
 	}
 
 	t.Logf("IPv4:[%s]%s - %s", ipaddr, record.ISOCode, record.Name)
@@ -50,14 +60,13 @@ func testIpAddr(t *testing.T) {
 	ip = net.ParseIP(ipaddr)
 	record, err = geoip.GetGeoInfo(ip)
 	if err != nil {
-		t.Errorf("Failed to get GeoIP info for IPv6 %s: %v", ipaddr, err)
+		t.Fatalf("Failed to get GeoIP info for IPv6 %s: %v", ipaddr, err)
 	}
-	if record != nil {
-		if record.ISOCode == "" && record.Name == "" {
-			t.Errorf("Country information is missing for IPv6 %s", ipaddr)
-		}
-	} else {
-		t.Errorf("GeoIP record is nil for IPv6 %s", ipaddr)
+	if record == nil {
+		t.Fatalf("GeoIP record is nil for IPv6 %s", ipaddr)
+	}
+	if record.ISOCode == "" && record.Name == "" {
+		t.Errorf("Country information is missing for IPv6 %s", ipaddr)
 	}
 	t.Logf("IPv6:[%s]%s - %s", ipaddr, record.ISOCode, record.Name)
 }

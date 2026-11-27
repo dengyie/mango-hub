@@ -359,51 +359,98 @@ func RenewClientExpiredAt(clientUUID string, expectedExpire, newExpire time.Time
 	return res.RowsAffected > 0, nil
 }
 
-func SaveClient(updates map[string]interface{}) error {
-	db := dbcore.GetDBInstance()
+var adminEditableClientColumns = map[string]struct{}{
+	"name":               {},
+	"token":              {},
+	"remark":             {},
+	"public_remark":      {},
+	"group":              {},
+	"tags":               {},
+	"weight":             {},
+	"price":              {},
+	"currency":           {},
+	"billing_cycle":      {},
+	"expired_at":         {},
+	"auto_renewal":       {},
+	"traffic_limit":      {},
+	"traffic_limit_type": {},
+	"hidden":             {},
+	"miner_configured":   {},
+	"miner_controllable": {},
+	"region":             {},
+	"cpu_name":           {},
+	"virtualization":     {},
+	"arch":               {},
+	"cpu_cores":          {},
+	"cpu_physical_cores": {},
+	"os":                 {},
+	"kernel_version":     {},
+	"gpu_name":           {},
+	"ipv4":               {},
+	"ipv6":               {},
+	"mem_total":          {},
+	"swap_total":         {},
+	"disk_total":         {},
+	"version":            {},
+}
+
+func prepareAdminClientUpdate(updates map[string]interface{}) (string, map[string]interface{}, error) {
 	clientUUID, ok := updates["uuid"].(string)
 	if !ok || clientUUID == "" {
-		return fmt.Errorf("invalid client UUID")
+		return "", nil, fmt.Errorf("invalid client UUID")
 	}
 
-	// 确保更新的字段不为空
-	if len(updates) == 0 {
-		return fmt.Errorf("no fields to update")
+	filtered := make(map[string]interface{}, len(updates)+1)
+	for key, val := range updates {
+		if _, allowed := adminEditableClientColumns[key]; allowed {
+			filtered[key] = val
+		}
+	}
+	if len(filtered) == 0 {
+		return "", nil, fmt.Errorf("no editable fields to update")
 	}
 
-	if v, exists := updates["traffic_limit"]; exists {
+	if v, exists := filtered["traffic_limit"]; exists {
 		if val, ok := v.(float64); ok {
 			if val < 0 || val > math.MaxInt64-1 {
-				return fmt.Errorf("traffic_limit must be a valid non-negative int64 value, got %v", val)
+				return "", nil, fmt.Errorf("traffic_limit must be a valid non-negative int64 value, got %v", val)
 			}
 		}
 	}
-	if value, exists := updates["expired_at"]; exists {
+	if value, exists := filtered["expired_at"]; exists {
 		switch typed := value.(type) {
 		case nil:
-			updates["expired_at"] = nil
+			filtered["expired_at"] = nil
 		case time.Time:
-			updates["expired_at"] = typed.UTC()
+			filtered["expired_at"] = typed.UTC()
 		case *time.Time:
 			if typed == nil {
-				updates["expired_at"] = nil
+				filtered["expired_at"] = nil
 			} else {
-				updates["expired_at"] = typed.UTC()
+				filtered["expired_at"] = typed.UTC()
 			}
 		case string:
 			stamp, err := time.Parse(time.RFC3339Nano, typed)
 			if err != nil {
-				return fmt.Errorf("expired_at must be an RFC3339 timestamp with a timezone: %w", err)
+				return "", nil, fmt.Errorf("expired_at must be an RFC3339 timestamp with a timezone: %w", err)
 			}
-			updates["expired_at"] = stamp.UTC()
+			filtered["expired_at"] = stamp.UTC()
 		default:
-			return fmt.Errorf("expired_at must be an RFC3339 timestamp with a timezone")
+			return "", nil, fmt.Errorf("expired_at must be an RFC3339 timestamp with a timezone")
 		}
 	}
 
-	updates["updated_at"] = time.Now().UTC()
+	filtered["updated_at"] = time.Now().UTC()
+	return clientUUID, filtered, nil
+}
 
-	return saveClient(db, clientUUID, updates)
+func SaveClient(updates map[string]interface{}) error {
+	db := dbcore.GetDBInstance()
+	clientUUID, filtered, err := prepareAdminClientUpdate(updates)
+	if err != nil {
+		return err
+	}
+	return saveClient(db, clientUUID, filtered)
 }
 
 // saveClient is the admin edit write. clientUUID is the row being edited;

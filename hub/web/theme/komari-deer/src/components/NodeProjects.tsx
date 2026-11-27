@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 
 interface NodeProjectsProps {
   publicRemark?: string | null;
+  projects?: string[];
   compact?: boolean;
   maxVisible?: number;
   showLabel?: boolean;
@@ -16,13 +17,14 @@ interface NodeProjectsProps {
  */
 export function NodeProjects({
   publicRemark,
+  projects: providedProjects,
   compact = false,
   maxVisible = 2,
   showLabel = false,
   className,
 }: NodeProjectsProps) {
   const { t } = useTranslation();
-  const projects = parseNodeProjects(publicRemark);
+  const projects = providedProjects ?? parseNodeProjects(publicRemark);
 
   if (compact) {
     const visible = projects.slice(0, maxVisible);
@@ -31,6 +33,7 @@ export function NodeProjects({
 
     return (
       <div
+        role="group"
         className={cn("flex h-6 min-w-0 items-center gap-1 overflow-hidden", className)}
         title={projects.length > 0 ? fullTitle : undefined}
         aria-label={projects.length > 0 ? `${t("nodeCard.projects")}: ${fullTitle}` : t("nodeCard.noProjects")}
@@ -44,9 +47,9 @@ export function NodeProjects({
             {visible.map((project) => (
               <span
                 key={project}
-                className="inline-flex h-5 max-w-[7.5rem] shrink items-center truncate rounded-md border border-primary/20 bg-primary/10 px-1.5 text-[10px] font-medium leading-none text-primary"
+                className="inline-flex h-5 max-w-[7.5rem] shrink items-center rounded-md border border-primary/20 bg-primary/10 px-1.5 text-[10px] font-medium leading-none text-primary"
               >
-                {project}
+                <span className="min-w-0 truncate">{project}</span>
               </span>
             ))}
             {hiddenCount > 0 && (

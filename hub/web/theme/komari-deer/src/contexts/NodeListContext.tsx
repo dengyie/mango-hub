@@ -5,6 +5,7 @@ import { useRPC2Call } from "./RPC2Context";
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect";
 import { stringToBytes } from "@/utils/unitHelper";
 import { loadSnapshot, saveNodeListSnapshot } from "@/lib/snapshotCache";
+import { mapClientRecord } from "@/lib/nodeProjects";
 
 export type NodeBasicInfo = {
   /** 节点唯一标识符 */
@@ -130,36 +131,9 @@ export const NodeListProvider: React.FC<{ children: React.ReactNode }> = ({
           return;
         }
         // 将 { [uuid]: Client } 转换为 NodeBasicInfo[]
-        const list: NodeBasicInfo[] = Object.values(result).map((n: any) => ({
-          uuid: n.uuid,
-          name: n.name,
-          cpu_name: n.cpu_name,
-          virtualization: n.virtualization,
-          arch: n.arch,
-          cpu_cores: n.cpu_cores,
-          os: n.os,
-          kernel_version: n.kernel_version,
-          gpu_name: n.gpu_name,
-          region: n.region,
-          mem_total: n.mem_total,
-          swap_total: n.swap_total,
-          disk_total: n.disk_total,
-          // 兼容旧字段，若无版本信息则给空串
-          version: n.version ?? "",
-          weight: n.weight ?? 0,
-          price: n.price ?? 0,
-          tags: n.tags ?? "",
-          billing_cycle: n.billing_cycle ?? 0,
-          currency: n.currency ?? "",
-          group: n.group ?? "",
-          traffic_limit: normalizeTrafficLimit(n.traffic_limit),
-          traffic_limit_type: n.traffic_limit_type,
-          expired_at: n.expired_at ?? "",
-          created_at: n.created_at ?? "",
-          updated_at: n.updated_at ?? "",
-          ipv4: n.ipv4,
-          ipv6: n.ipv6,
-        }));
+        const list: NodeBasicInfo[] = Object.values(result).map((n: any) =>
+          mapClientRecord(n, normalizeTrafficLimit)
+        );
         setNodeList(list);
         saveNodeListSnapshot(list);
       })
