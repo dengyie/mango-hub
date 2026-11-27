@@ -47,6 +47,8 @@ func TestGetClientsRedactsGuestReports(t *testing.T) {
 		GPU:       &v2.GPUDetailReport{AverageUsage: 88},
 		DiskIO:    []v2.DiskIOReport{{ReadBytes: 1}},
 		Message:   "internal note",
+		// 顶层的 power_governor 档位带 idle_sec/gpu_pct/paused_by_gov:游客必须拿不到。
+		Governor: &v2.GovernorReport{Tier: "eco", IdleSec: 42, GpuPct: 17.5, PausedByGov: true},
 	})
 	t.Cleanup(func() { agent_runtime.DeleteLatestReport(clientUUID) })
 
@@ -97,6 +99,15 @@ func TestGetClientsRedactsGuestReports(t *testing.T) {
 	}
 	if report.Message != "" {
 		t.Fatalf("guest received internal message: %q", report.Message)
+	}
+	// 回归:governor 提到 Report 顶层后,WS 出口漏剥 -> idle_sec/gpu_pct/paused_by_gov 外泄。
+	if report.Governor != nil {
+		t.Fatalf("guest received governor telemetry: %+v", report.Governor)
+	}
+	for _, leak := range []string{"idle_sec", "gpu_pct", "paused_by_gov"} {
+		if strings.Contains(string(raw), leak) {
+			t.Fatalf("governor field %q leaked over /api/clients: %s", leak, raw)
+		}
 	}
 	if strings.Contains(string(raw), wallet) {
 		t.Fatal("wallet address leaked to guest over /api/clients")

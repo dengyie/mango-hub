@@ -346,6 +346,23 @@ func getPublicInfo(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcE
 	return info, nil
 }
 
+// governorOfReport 取报告里的自适应功率档位:顶层优先(新 agent),
+// 回落到 mining.governor(滚动升级期间的旧 agent)。空档位一律当没有。
+func governorOfReport(rep *v2.Report) *v2.GovernorReport {
+	if rep == nil {
+		return nil
+	}
+	if g := rep.Governor; g != nil && strings.TrimSpace(g.Tier) != "" {
+		return g
+	}
+	if rep.Mining != nil {
+		if g := rep.Mining.Governor; g != nil && strings.TrimSpace(g.Tier) != "" {
+			return g
+		}
+	}
+	return nil
+}
+
 func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
 	var params struct {
 		UUID  string   `json:"uuid"`
@@ -390,9 +407,23 @@ func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 
 	// latest-status 每 4s 被首页轮询一次；卡片 pill 只要算法+算力。
 	// 不把钱包/矿池/份额打进热路径（历史详情走 mining_records）。
+	// miningGovernorLive 是 power_governor 档位的热路径投影(去掉 since/paused_by_gov 等内部字段)。
+	// 它刻意不嵌在「有没有矿工数据」的判断里:pause 档会停掉矿工服务,mining 整体缺失,
+	// 档位必须继续可见,否则最该显示「暂停(让卡)」的时刻反而什么都没有。
+	type miningGovernorLive struct {
+		Tier string `json:"tier"` // full | eco | pause
+		// idle_sec / gpu_pct 只给管理员:未认证调用者拿到 idle_sec 等于「主人多久没
+		// 碰键盘」,gpu_pct 能反推在跑什么负载,属行为隐私;游客只需要档位本身。
+		IdleSec int64   `json:"idle_sec,omitempty"`
+		GpuPct  float64 `json:"gpu_pct,omitempty"`
+	}
 	type miningLiveStatus struct {
-		Algorithm    string  `json:"algorithm"`
-		Hashrate1Min float64 `json:"hashrate_1min"`
+		// algorithm / hashrate_1min 带 omitempty:只有档位没有矿工(pause 档停服务)时
+		// 这个块只承载 governor,不能凭空造出 algorithm:"" + hashrate:0 —— 前端会据此
+		// 渲染出一颗假的「Mining · 0 H/s」pill。
+		Algorithm    string              `json:"algorithm,omitempty"`
+		Hashrate1Min *float64            `json:"hashrate_1min,omitempty"`
+		Governor     *miningGovernorLive `json:"governor,omitempty"`
 	}
 	type recordLike struct {
 		Client          string              `json:"client"`
@@ -462,10 +493,24 @@ func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 			Ping:           stats,
 		}
 		if m := rep.Mining; m != nil {
+			hs := m.Hashrate1Min
 			rl.Mining = &miningLiveStatus{
 				Algorithm:    m.Algorithm,
-				Hashrate1Min: m.Hashrate1Min,
+				Hashrate1Min: &hs,
 			}
+		}
+		// 档位与矿工数据解耦:顶层优先(新 agent),回落到 mining.governor(过渡期旧 agent)。
+		// 矿工已停(pause 档)时 mining 为 nil,这里仍要造出只带档位的块,让面板看得见。
+		if g := governorOfReport(rep); g != nil {
+			if rl.Mining == nil {
+				rl.Mining = &miningLiveStatus{}
+			}
+			live := &miningGovernorLive{Tier: g.Tier}
+			if isAdmin {
+				live.IdleSec = g.IdleSec
+				live.GpuPct = g.GpuPct
+			}
+			rl.Mining.Governor = live
 		}
 		if rep.GPU != nil {
 			rl.GpuCount = rep.GPU.Count

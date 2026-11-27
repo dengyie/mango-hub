@@ -120,14 +120,13 @@ func publicGetClientRecentRecords(ctx context.Context, req *rpc.JsonRpcRequest) 
 		return nil, rpc.MakeError(rpc.InvalidParams, "UUID is required", nil) // 防止未登录获取隐藏客户端
 	}
 	reports := agent_runtime.GetRecentReports(params.UUID)
-	// 游客可见性收敛（P1）：最近状态缓存是原始 v2.Report，含 mining（钱包/矿池）、gpu、disk_io。
-	// 其余三个游客出口（getNodes/getNodesInformation/getRecordsByUUID/queryMetrics）均已收敛，
-	// 此处同步剥离；登录用户（含 2FA/API Key）保持全量。字段为值拷贝，修改不影响共享缓存。
+	// 游客可见性收敛（P1）：最近状态缓存是原始 v2.Report，含 mining（钱包/矿池）、gpu、
+	// disk_io、governor（idle_sec/gpu_pct 属行为隐私）。统一走 agent_runtime.RedactForGuest，
+	// 不再在这里逐字段罗列——顶层的 governor 正是这么漏出去的。
+	// reports 是值拷贝切片，改字段不影响共享缓存；登录用户（含 2FA/API Key）保持全量。
 	if !isLoginFromCtx(ctx) {
 		for i := range reports {
-			reports[i].Mining = nil
-			reports[i].GPU = nil
-			reports[i].DiskIO = nil
+			agent_runtime.RedactForGuest(&reports[i])
 		}
 	}
 	return reports, nil

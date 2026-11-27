@@ -37,6 +37,8 @@ func TestGuestRecentRecordsStripSensitiveFields(t *testing.T) {
 		DiskIO:    []v2.DiskIOReport{{Device: "sda", ReadBytes: 1, WriteBytes: 2}},
 		Uptime:    3600,
 		UpdatedAt: now,
+		// 顶层 power_governor:本用例此前没带 governor,泄露断言等于空跑。
+		Governor: &v2.GovernorReport{Tier: "eco", IdleSec: 42, GpuPct: 17.5, PausedByGov: true},
 	})
 	t.Cleanup(func() {
 		agent_runtime.DeleteLatestReport(uuid)
@@ -54,7 +56,7 @@ func TestGuestRecentRecordsStripSensitiveFields(t *testing.T) {
 		t.Fatalf("marshal guest: %v", err)
 	}
 	guestStr := string(guestJSON)
-	for _, leak := range []string{"mining", "wallet", "pool", "worker", "disk_io", "gpu", "WALLETADDR123456"} {
+	for _, leak := range []string{"mining", "wallet", "pool", "worker", "disk_io", "gpu", "WALLETADDR123456", "governor", "idle_sec", "gpu_pct", "paused_by_gov"} {
 		if strings.Contains(guestStr, leak) {
 			t.Fatalf("guest recent records leaked %q: %s", leak, guestStr)
 		}
@@ -83,7 +85,7 @@ func TestGuestRecentRecordsStripSensitiveFields(t *testing.T) {
 		t.Fatalf("marshal admin: %v", err)
 	}
 	adminStr := string(adminJSON)
-	for _, keep := range []string{"mining", "wallet", "disk_io", "gpu"} {
+	for _, keep := range []string{"mining", "wallet", "disk_io", "gpu", "governor"} {
 		if !strings.Contains(adminStr, keep) {
 			t.Fatalf("admin recent records lost %q: %s", keep, adminStr)
 		}

@@ -114,14 +114,13 @@ func GetClients(c *gin.Context) {
 	}
 }
 
-// redactReportForGuest enforces the guest-visibility policy on the live
-// report stream, matching what publicGetClientRecentRecords and
-// getNodesLatestStatus already do: mining wallet/pool addresses, GPU
-// serial-level details and disk IO are admin/owner data, not public homepage
-// material. The homepage only renders CPU/RAM/load/net numbers.
+// redactReportForGuest enforces the guest-visibility policy on the live report
+// stream. The field set lives in agent_runtime.RedactForGuest so the three
+// guest exits cannot drift apart again — governor was lifted to the Report
+// top level on 2026-11-27 and only getNodesLatestStatus learned about it, so
+// this stream started handing idle_sec/gpu_pct/paused_by_gov to guests.
+// /api/clients additionally blanks Message, which the homepage never renders.
 func redactReportForGuest(report *v2.Report) {
-	report.Mining = nil
-	report.GPU = nil
-	report.DiskIO = nil
+	agent_runtime.RedactForGuest(report)
 	report.Message = ""
 }
