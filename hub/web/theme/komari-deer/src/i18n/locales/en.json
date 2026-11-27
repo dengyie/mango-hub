@@ -965,7 +965,13 @@
     "hashrate": "Hashrate",
     "shares": "Shares",
     "shares_valid": "Valid",
-    "shares_invalid": "Invalid"
+    "shares_invalid": "Invalid",
+    "govFull": "Full 100%",
+    "govEco": "Eco 70%",
+    "govPause": "Paused",
+    "govUnknown": "Auto",
+    "govNoMiner": "miner stopped",
+    "govTitle": "Adaptive power"
   },
   "earnings": {
     "total": "Total Balance",

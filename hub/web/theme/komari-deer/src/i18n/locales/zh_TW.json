@@ -965,7 +965,13 @@
     "hashrate": "算力",
     "shares": "份額",
     "shares_valid": "Valid",
-    "shares_invalid": "Invalid"
+    "shares_invalid": "Invalid",
+    "govFull": "滿速 100%",
+    "govEco": "節能 70%",
+    "govPause": "暫停(讓卡)",
+    "govUnknown": "自適應",
+    "govNoMiner": "礦工已停",
+    "govTitle": "自適應功率"
   },
   "earnings": {
     "total": "總餘額",

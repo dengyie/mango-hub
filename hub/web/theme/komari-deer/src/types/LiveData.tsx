@@ -47,8 +47,15 @@ export type Record = {
     }[];
   };
   mining?: {
-    algorithm: string;
-    hashrate_1min: number;
+    /** 只有档位、没有矿工(pause 停矿)时缺省,不要按空串当算法名渲染。 */
+    algorithm?: string;
+    hashrate_1min?: number;
+    /** power_governor 自适应功率档位;未部署/调节器停写时缺省。 */
+    governor?: {
+      tier: string;
+      idle_sec?: number;
+      gpu_pct?: number;
+    };
   };
   uptime: number;
   process: number;

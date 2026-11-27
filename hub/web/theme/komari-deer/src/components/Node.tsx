@@ -12,7 +12,7 @@ import { usePingStats } from "@/hooks/usePingStats";
 import { getOSImage, getOSName } from "@/utils";
 import { formatBytes } from "@/utils/unitHelper";
 import { filterCnbReachability, isCnbProxyHost } from "@/utils/cnb";
-import { miningStatusPill } from "@/utils/miningHelper";
+import { GOVERNOR_TONE_CLASS, governorBadge, miningStatusPill } from "@/utils/miningHelper";
 import Flag from "./Flag";
 import PriceTags from "./PriceTags";
 import LoadChartFloat from "./LoadChartFloat";
@@ -177,6 +177,8 @@ const Node = ({ basic, live, health, ping }: NodeProps) => {
   const current = health.status === "online";
   const mining = current ? live?.mining : undefined;
   const miningPill = miningStatusPill(mining);
+  // 档位徽标直接从 mining.governor 取,不依赖 miningPill:pause 档会停矿,pill 消失但徽标必须还在。
+  const govBadge = governorBadge(mining?.governor);
   const network = current && live?.validMetrics?.network !== false ? live?.network : undefined;
   const trafficType = basic.traffic_limit_type ?? "sum";
   const projects = parseNodeProjects(basic.public_remark);
@@ -193,10 +195,11 @@ const Node = ({ basic, live, health, ping }: NodeProps) => {
             <img src={getOSImage(basic.os)} alt="" width={14} height={14} className="h-3.5 w-3.5 shrink-0 object-contain" />
             <span className="truncate">{getOSName(basic.os)}</span>
             {live?.message && <Tips color="#CE282E">{live.message}</Tips>}
+            {govBadge && <span title={[t(govBadge.i18nKey, { defaultValue: govBadge.tier }), miningPill?.name].filter(Boolean).join(" · ")} className={cn("ml-auto shrink-0 rounded-full px-1.5 py-0.5 font-medium", GOVERNOR_TONE_CLASS[govBadge.tone])}>{t(govBadge.i18nKey, { defaultValue: govBadge.tier })}</span>}
             <StatusIndicator
               status={current ? "online" : health.status === "unknown" ? "connecting" : "offline"}
               label={t(current ? "nodeCard.online" : `dashboard.${health.status}`)}
-              className="ml-auto shrink-0 px-2 py-0.5 text-[11px] leading-none"
+              className={cn("shrink-0 px-2 py-0.5 text-[11px] leading-none", !govBadge && "ml-auto")}
             />
           </div>
         </div>
@@ -226,7 +229,8 @@ const Node = ({ basic, live, health, ping }: NodeProps) => {
         <div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary/70" style={{ width: `${Math.min(percentage, 100)}%` }} /></div>
         <p className="text-right font-mono text-muted-foreground">{used == null ? "—" : formatBytes(used)} / {formatBytes(basic.traffic_limit)}</p>
       </div>}
-      {miningPill && <div className="flex justify-between gap-2 rounded-md bg-muted/50 p-2 text-xs"><span>{miningPill.name}</span><span className={cn("font-mono", miningPill.up ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400")}>{miningPill.metric}</span></div>}
+      {miningPill && <div className="flex justify-between gap-2 rounded-md bg-muted/50 p-2 text-xs"><span>{miningPill.name}{miningPill.governor ? ` · ${t(miningPill.governor.i18nKey, { defaultValue: miningPill.governor.tier })}` : ""}</span><span className={cn("font-mono", miningPill.up ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400")}>{miningPill.metric}</span></div>}
+      {!miningPill && govBadge && <div className="flex justify-between gap-2 rounded-md bg-muted/50 p-2 text-xs"><span>{t(govBadge.i18nKey, { defaultValue: govBadge.tier })}</span><span className="font-mono text-muted-foreground">{t("mining.govNoMiner")}</span></div>}
       {projects.length > 0 && <div className="border-t pt-3"><NodeProjects projects={projects} showLabel /></div>}
       <NodePingDetails basic={basic} />
       <div className="border-t pt-3"><PriceTags price={basic.price} billing_cycle={basic.billing_cycle} expired_at={basic.expired_at} currency={basic.currency} tags={basic.tags} ip4={basic.ipv4} ip6={basic.ipv6} compact /></div>

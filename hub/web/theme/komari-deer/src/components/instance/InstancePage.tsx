@@ -14,6 +14,8 @@ import PingChart from "./PingChart";
 import { NodeProjects } from "@/components/NodeProjects";
 import { parseNodeProjects } from "@/lib/nodeProjects";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
+import { GOVERNOR_TONE_CLASS, governorBadge } from "@/utils/miningHelper";
 
 // Import DetailsGrid as client-only to prevent hydration mismatch with i18n
 const DetailsGrid = dynamic(
@@ -27,7 +29,7 @@ interface InstancePageProps {
 
 export default function InstancePage({ uuid }: InstancePageProps) {
   const { t } = useTranslation();
-  const { onRefresh } = useLiveData();
+  const { live_data, onRefresh } = useLiveData();
   const [recent, setRecent] = useState<Record[]>([]);
   const { nodeList } = useNodeList();
   const length = 30 * 5;
@@ -35,6 +37,8 @@ export default function InstancePage({ uuid }: InstancePageProps) {
   
   // Find the node
   const node = nodeList?.find((n) => n.uuid === uuid);
+  // 自适应功率档位:取当前节点的实时快照(与首页卡片同源),无数据则不显示徽标
+  const govBadge = governorBadge(live_data?.data?.data?.[uuid]?.mining?.governor);
   const projects = parseNodeProjects(node?.public_remark);
 
   // Initial data loading
@@ -84,6 +88,14 @@ export default function InstancePage({ uuid }: InstancePageProps) {
                {node?.name ?? uuid}
              </h1>
           </div>
+          {govBadge && (
+            <div
+              className={cn("px-2 py-1 rounded text-xs font-medium", GOVERNOR_TONE_CLASS[govBadge.tone])}
+              title={t("mining.govTitle", { defaultValue: "自适应功率" })}
+            >
+              {t(govBadge.i18nKey, { defaultValue: govBadge.tier })}
+            </div>
+          )}
           <div className="bg-muted px-2 py-1 rounded text-xs font-mono text-muted-foreground">
              {node?.uuid}
           </div>

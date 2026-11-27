@@ -22,6 +22,21 @@ Each deployment is retained under `data/theme-releases/<revision>-<unique suffix
 
 `data/theme-releases/last-success.json` records the active and previous relative paths. For a manual rollback, use existing operator SSH access, validate the previous path in this record, and atomically replace the active symlink with a relative link to it. Do not delete the deployed releases or overwrite the live metrics databases. After rollback, check `/frontend-release.json`, `/api/public`, the home page and its static assets.
 
+## Manual hotfix outside CI
+
+A local theme fix that is not yet on `main` still has to go through the same receiver — rebuilding the hub binary is not enough, because `data/theme/komari-deer` (the release symlink) shadows the theme embedded in the binary. Note also that any later CI run on `origin/main` republishes its own build and silently replaces the running theme, so a local hotfix must be deployed as a release and then committed to `main` to survive.
+
+Build the theme, then:
+
+```sh
+printf '{"revision":"%s"}\n' "$REV" > dist/frontend-release.json   # REV = any 40-hex id, e.g. sha1 of a label
+COPYFILE_DISABLE=1 tar --no-mac-metadata -czf theme.tgz dist komari-theme.json
+ssh hk "sudo env SSH_ORIGINAL_COMMAND='deploy $REV $(sha256sum theme.tgz | cut -d' ' -f1)' \
+  python3 /home/mango/mangohub/hub/scripts/deploy-theme.py" < theme.tgz
+```
+
+`COPYFILE_DISABLE=1 tar --no-mac-metadata` is mandatory when packaging on macOS; otherwise AppleDouble `._*` entries are added and the receiver rejects the archive with `Unexpected archive entry`. Verify with `sudo readlink data/theme/komari-deer`, `curl 127.0.0.1:25774/frontend-release.json`, and a normal browser session against the public host.
+
 ## Validation
 
 Local checks: `python3 -m unittest discover -s tests -p 'test_deploy_theme.py' -v`, then `npm test`, `npm run typecheck`, `npm run build` from `web/theme/komari-deer`. Browser fixture suites additionally cover day/night persistence, canvas repaint, hover pause across live refreshes, country node data, resume on leave, four screen widths, details cancellation and retry. Production verification compares `/frontend-release.json` to the GitHub run SHA and exercises the live theme switch and globe hover.
