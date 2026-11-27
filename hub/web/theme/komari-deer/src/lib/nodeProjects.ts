@@ -1,4 +1,5 @@
 import type { NodeBasicInfo } from "@/contexts/NodeListContext";
+import type { CommandItem } from "@/components/ui/CommandPalette";
 
 /**
  * Parse deployed project names from a node's public_remark field.
@@ -107,4 +108,63 @@ export function matchesNodeSearch(
   const tokens = rawTerm.trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return true;
   return tokens.every((token) => matchesSingleToken(node, token, status, isRegionMatch));
+}
+
+export interface CommandPaletteLabels {
+  projects: string;
+  nodes: string;
+  actions: string;
+  toggleView: string;
+  showAttention: string;
+  showOffline: string;
+  showAll: string;
+  resetFilters: string;
+}
+
+/**
+ * Build searchable CommandPalette items from deployed projects, nodes, and quick dashboard actions.
+ */
+export function buildDashboardCommandItems(
+  nodes: readonly Pick<NodeBasicInfo, "uuid" | "name" | "os" | "public_remark">[],
+  labels: CommandPaletteLabels
+): CommandItem[] {
+  const projectHosts = new Map<string, string[]>();
+  for (const node of nodes) {
+    for (const proj of parseNodeProjects(node.public_remark)) {
+      const list = projectHosts.get(proj);
+      if (list) {
+        list.push(node.name);
+      } else {
+        projectHosts.set(proj, [node.name]);
+      }
+    }
+  }
+
+  const projectItems: CommandItem[] = Array.from(projectHosts.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([proj, hosts]) => ({
+      id: `proj:${proj}`,
+      label: proj,
+      hint: hosts.join(" · "),
+      icon: "layers",
+      group: labels.projects,
+    }));
+
+  const nodeItems: CommandItem[] = nodes.map((node) => ({
+    id: `node:${node.uuid}`,
+    label: node.name,
+    hint: node.public_remark?.trim() || node.os,
+    icon: "globe",
+    group: labels.nodes,
+  }));
+
+  const actionItems: CommandItem[] = [
+    { id: "action:view", label: labels.toggleView, icon: "sliders", group: labels.actions },
+    { id: "action:attention", label: labels.showAttention, icon: "alert-triangle", group: labels.actions },
+    { id: "action:offline", label: labels.showOffline, icon: "circle-x", group: labels.actions },
+    { id: "action:all", label: labels.showAll, icon: "check-circle", group: labels.actions },
+    { id: "action:reset", label: labels.resetFilters, icon: "refresh", group: labels.actions },
+  ];
+
+  return [...projectItems, ...nodeItems, ...actionItems];
 }

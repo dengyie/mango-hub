@@ -244,6 +244,18 @@
   "command_clipboard": {
     "title": "命令剪贴板"
   },
+  "commandPalette": {
+    "actions": "快捷操作",
+    "nodes": "节点直达",
+    "open": "快捷命令",
+    "placeholder": "搜索节点、已部署项目或快捷操作...",
+    "projects": "已部署项目",
+    "resetFilters": "重置筛选",
+    "showAll": "显示全部节点",
+    "showAttention": "仅看需关注节点",
+    "showOffline": "仅看离线节点",
+    "toggleView": "切换卡片/表格视图"
+  },
   "common": {
     "about": "关于",
     "action": "操作",

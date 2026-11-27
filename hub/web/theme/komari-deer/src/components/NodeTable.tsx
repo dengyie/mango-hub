@@ -7,9 +7,9 @@ import {
   TableHeader,
   TableRow,
 } from "./ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Flex } from "@/components/ui/flex";
 import { Button } from "@/components/ui/button";
+import { StatusIndicator } from "@/components/ui/StatusIndicator";
 import { useTranslation } from "react-i18next";
 import { ChevronRight, ChevronUp, ChevronDown } from "lucide-react";
 import type { NodeBasicInfo } from "@/contexts/NodeListContext";
@@ -343,18 +343,11 @@ const NodeTable: React.FC<NodeTableProps> = ({ nodes, liveData, isLive, summarie
 
                   <TableCell className="py-2 px-2">
                     <div className="flex items-center justify-center gap-2">
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "font-normal text-xs px-2 py-0.5 border h-6",
-                          isOnline && "border-green-500/30 text-green-600 bg-green-500/10 dark:text-green-400 dark:bg-green-500/20",
-                          health.status === "unknown" && "border-border text-muted-foreground bg-muted",
-                          health.status === "offline" && "border-red-500/30 text-red-600 bg-red-500/10 dark:text-red-400 dark:bg-red-500/20"
-                        )}
-                      >
-                         <span className={cn("w-1.5 h-1.5 rounded-full mr-1.5", isOnline ? "bg-green-500" : "bg-muted-foreground")} />
-                        {t(isOnline ? "nodeCard.online" : `dashboard.${health.status}`)}
-                      </Badge>
+                      <StatusIndicator
+                        status={isOnline ? "online" : health.status === "unknown" ? "connecting" : "offline"}
+                        label={t(isOnline ? "nodeCard.online" : `dashboard.${health.status}`)}
+                        className="h-6 px-2 py-0.5 text-xs"
+                      />
                       {nodeData.message && (
                         <Tips color="#ef4444">{nodeData.message}</Tips>
                       )}

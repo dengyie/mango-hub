@@ -18,6 +18,7 @@ import PriceTags from "./PriceTags";
 import LoadChartFloat from "./LoadChartFloat";
 import { NodeProjects } from "./NodeProjects";
 import { parseNodeProjects } from "@/lib/nodeProjects";
+import { StatusIndicator } from "@/components/ui/StatusIndicator";
 import Tips from "./ui/tips";
 
 /** Format seconds into readable uptime */
@@ -192,7 +193,11 @@ const Node = ({ basic, live, health, ping }: NodeProps) => {
             <img src={getOSImage(basic.os)} alt="" width={14} height={14} className="h-3.5 w-3.5 shrink-0 object-contain" />
             <span className="truncate">{getOSName(basic.os)}</span>
             {live?.message && <Tips color="#CE282E">{live.message}</Tips>}
-            <span className={cn("ml-auto shrink-0 rounded-full px-1.5 py-0.5 font-medium", current && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400", health.status === "offline" && "bg-rose-500/10 text-rose-600 dark:text-rose-400", health.status === "unknown" && "bg-muted")}>{t(current ? "nodeCard.online" : `dashboard.${health.status}`)}</span>
+            <StatusIndicator
+              status={current ? "online" : health.status === "unknown" ? "connecting" : "offline"}
+              label={t(current ? "nodeCard.online" : `dashboard.${health.status}`)}
+              className="ml-auto shrink-0 px-2 py-0.5 text-[11px] leading-none"
+            />
           </div>
         </div>
         <LoadChartFloat uuid={basic.uuid} trigger={<Button variant="ghost" size="icon" className="-mr-1 -mt-1 h-9 w-9 shrink-0" aria-label={t("dashboard.charts", { name: basic.name })}><TrendingUp className="h-4 w-4" /></Button>} />

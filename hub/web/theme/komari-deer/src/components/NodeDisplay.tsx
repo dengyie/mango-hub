@@ -9,7 +9,10 @@ import type { LiveData } from "@/types/LiveData";
 import { aggregateHealth, getNodeHealth, matchesHealthFilter, type HealthFilter, type NodeStatus } from "@/lib/dashboard";
 import { emptyPingStats, summarizeLivePing } from "@/lib/ping";
 import { NodeGrid, type DashboardNode } from "./Node";
-import { matchesNodeSearch } from "@/lib/nodeProjects";
+import { buildDashboardCommandItems, matchesNodeSearch } from "@/lib/nodeProjects";
+import { CommandPalette, type CommandItem } from "@/components/ui/CommandPalette";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { StatusIndicator } from "@/components/ui/StatusIndicator";
 import { isRegionMatch } from "@/utils/regionHelper";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +29,7 @@ const NodeDisplay = ({ nodes, liveData, isLive, children }: NodeDisplayProps) =>
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedGroup, setSelectedGroup] = useLocalStorage<string>("nodeSelectedGroup", "all");
   const [filter, setFilter] = useState<HealthFilter>("all");
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const metadata = usePingTasks();
   const sortedNodes = useMemo(() => [...nodes].sort((a, b) => a.weight - b.weight), [nodes]);
@@ -55,6 +59,11 @@ const NodeDisplay = ({ nodes, liveData, isLive, children }: NodeDisplayProps) =>
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+        return;
+      }
       const target = event.target;
       const typing = target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
       if (event.key === "/" && !typing && !event.ctrlKey && !event.metaKey && !event.altKey) { event.preventDefault(); searchRef.current?.focus(); }
@@ -65,11 +74,51 @@ const NodeDisplay = ({ nodes, liveData, isLive, children }: NodeDisplayProps) =>
   }, []);
   const reset = () => { setSearchTerm(""); setFilter("all"); setSelectedGroup("all"); };
 
+  const commandItems = useMemo(
+    () =>
+      buildDashboardCommandItems(sortedNodes, {
+        projects: t("commandPalette.projects"),
+        nodes: t("commandPalette.nodes"),
+        actions: t("commandPalette.actions"),
+        toggleView: t("commandPalette.toggleView"),
+        showAttention: t("commandPalette.showAttention"),
+        showOffline: t("commandPalette.showOffline"),
+        showAll: t("commandPalette.showAll"),
+        resetFilters: t("commandPalette.resetFilters"),
+      }),
+    [sortedNodes, t]
+  );
+
+  const handleCommandSelect = (item: CommandItem) => {
+    if (item.id.startsWith("node:")) {
+      window.location.hash = `#/instance/${item.id.slice(5)}`;
+    } else if (item.id.startsWith("proj:")) {
+      setSelectedGroup("all");
+      setFilter("all");
+      setSearchTerm(item.id.slice(5));
+    } else if (item.id === "action:view") {
+      setViewMode(viewMode === "grid" ? "table" : "grid");
+    } else if (item.id === "action:attention") {
+      setFilter("attention");
+    } else if (item.id === "action:offline") {
+      setFilter("offline");
+    } else if (item.id === "action:all") {
+      setFilter("all");
+    } else if (item.id === "action:reset") {
+      reset();
+    }
+  };
+
   let content: React.ReactNode;
   if (filteredNodes.length === 0) {
-    content = <div className="rounded-xl border border-dashed bg-card py-12 text-center">
-      <p className="mb-3 text-sm text-muted-foreground">{t("search.no_results")}</p>
-      <Button variant="outline" onClick={reset}>{t("dashboard.reset")}</Button>
+    content = <div className="rounded-xl border border-dashed bg-card">
+      <EmptyState
+        icon="search"
+        title={t("search.no_results")}
+        description={t("search.try_different")}
+        actionLabel={t("dashboard.reset")}
+        onAction={reset}
+      />
     </div>;
   } else if (viewMode === "grid") {
     content = <NodeGrid nodes={filteredNodes} liveData={liveData} summaries={summaries} />;
@@ -81,9 +130,9 @@ const NodeDisplay = ({ nodes, liveData, isLive, children }: NodeDisplayProps) =>
 
   return <div className="min-w-0 space-y-4">
     {children}
-    <div className="flex flex-wrap items-baseline justify-between gap-2">
+    <div className="flex flex-wrap items-center justify-between gap-2">
       <h1 className="text-xl font-semibold tracking-tight">{t("dashboard.overview")}</h1>
-      <span className="text-xs text-muted-foreground">{t(isLive ? "dashboard.live" : "dashboard.stale")}</span>
+      <StatusIndicator status={isLive ? "online" : "connecting"} label={t(isLive ? "dashboard.live" : "dashboard.stale")} className="px-2 py-0.5 text-xs" />
     </div>
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label={t("dashboard.overview")}>
       {[
@@ -115,6 +164,17 @@ const NodeDisplay = ({ nodes, liveData, isLive, children }: NodeDisplayProps) =>
       <div className="flex shrink-0 rounded-lg border bg-card p-0.5" role="group" aria-label={t("dashboard.view")}>
         {(["grid", "table"] as const).map((mode) => <Button key={mode} variant={viewMode === mode ? "secondary" : "ghost"} size="icon" className="h-9 w-10" aria-label={t(`nodeDisplay.${mode}`)} aria-pressed={viewMode === mode} onClick={() => setViewMode(mode)}>{mode === "grid" ? <Grid3X3 className="h-4 w-4" /> : <Table2 className="h-4 w-4" />}</Button>)}
       </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-10 shrink-0 gap-1.5 bg-card px-2.5 text-xs text-muted-foreground hover:text-foreground"
+        aria-label={t("commandPalette.open")}
+        onClick={() => setPaletteOpen(true)}
+      >
+        <Search className="h-3.5 w-3.5" />
+        <kbd className="font-mono text-[11px]">⌘K</kbd>
+      </Button>
     </div>
     <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("dashboard.filters")}>
       <select aria-label={t("dashboard.filters")} value={filter} onChange={(event) => setFilter(event.target.value as HealthFilter)} className="h-10 max-w-[70%] rounded-md border bg-card px-3 text-sm sm:hidden">
@@ -126,6 +186,14 @@ const NodeDisplay = ({ nodes, liveData, isLive, children }: NodeDisplayProps) =>
       <span className="ml-auto text-xs text-muted-foreground" aria-live="polite">{t("dashboard.results", { count: filteredNodes.length, total: nodes.length })}</span>
     </div>
     {content}
+    <CommandPalette
+      items={commandItems}
+      isOpen={paletteOpen}
+      onClose={() => setPaletteOpen(false)}
+      onSelect={handleCommandSelect}
+      placeholder={t("commandPalette.placeholder")}
+      className="bg-popover border-border"
+    />
   </div>;
 };
 export default NodeDisplay;

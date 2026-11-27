@@ -244,6 +244,18 @@
   "command_clipboard": {
     "title": "Command Clipboard"
   },
+  "commandPalette": {
+    "actions": "Quick Actions",
+    "nodes": "Nodes",
+    "open": "Command Palette",
+    "placeholder": "Jump to node, deployed project, or action...",
+    "projects": "Deployed Projects",
+    "resetFilters": "Reset filters",
+    "showAll": "Show all nodes",
+    "showAttention": "Filter needs attention",
+    "showOffline": "Filter offline nodes",
+    "toggleView": "Toggle Grid / Table view"
+  },
   "common": {
     "about": "About",
     "action": "Action",

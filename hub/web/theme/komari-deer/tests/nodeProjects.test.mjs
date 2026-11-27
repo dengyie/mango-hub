@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseNodeProjects, matchesNodeSearch, mapClientRecord } from "../src/lib/nodeProjects.ts";
+import {
+  parseNodeProjects,
+  matchesNodeSearch,
+  mapClientRecord,
+  buildDashboardCommandItems,
+} from "../src/lib/nodeProjects.ts";
 
 test("parseNodeProjects splits comma, Chinese punctuation, semicolon, middle dot, and newlines", () => {
   assert.deepEqual(
@@ -72,4 +77,37 @@ test("matchesNodeSearch matches single and multi-token queries across public_rem
   assert.equal(matchesNodeSearch(node, "在线 panrouter", "online", noRegion), true);
   assert.equal(matchesNodeSearch(node, "离线 panrouter", "online", noRegion), false);
   assert.equal(matchesNodeSearch(node, "non-existent-project", "online", noRegion), false);
+});
+
+test("buildDashboardCommandItems groups unique projects, nodes, and quick actions", () => {
+  const items = buildDashboardCommandItems(
+    [
+      { uuid: "u1", name: "tebi", os: "Debian", public_remark: "MangoApi, IP-Pool" },
+      { uuid: "u2", name: "huawei", os: "Debian", public_remark: "IP-Pool, slidex" },
+    ],
+    {
+      projects: "Projects",
+      nodes: "Nodes",
+      actions: "Actions",
+      toggleView: "Toggle view",
+      showAttention: "Attention",
+      showOffline: "Offline",
+      showAll: "All",
+      resetFilters: "Reset",
+    }
+  );
+
+  const projPool = items.find((i) => i.id === "proj:IP-Pool");
+  assert.ok(projPool);
+  assert.equal(projPool.hint, "tebi · huawei");
+  assert.equal(projPool.group, "Projects");
+
+  const node1 = items.find((i) => i.id === "node:u1");
+  assert.ok(node1);
+  assert.equal(node1.label, "tebi");
+  assert.equal(node1.hint, "MangoApi, IP-Pool");
+
+  const actionView = items.find((i) => i.id === "action:view");
+  assert.ok(actionView);
+  assert.equal(actionView.group, "Actions");
 });
