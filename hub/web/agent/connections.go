@@ -263,11 +263,12 @@ func GetRecentReports(uuid string) []v2.Report {
 // RedactForGuest 把一份报告收敛成「游客可见」形态:Mining(钱包/矿池/份额)、
 // GPU(设备明细)、DiskIO、Governor 都不属于公开首页物料。
 //
-// 收敛到一处是刻意的:同一策略此前复制在 getNodesLatestStatus、
-// publicGetClientRecentRecords、/api/clients WS 三处。2026-11-27 把 governor
-// 提到 Report 顶层时只改了第一处,另两处就把 idle_sec(主人多久没碰键盘)/
-// gpu_pct(可反推负载)/paused_by_gov 原样吐给了未认证调用者。新增敏感字段时
-// 只改这里,别在每个出口各写一遍。
+// 收敛到一处是刻意的:游客出口分两类——getNodesLatestStatus 是 deny-by-default
+// 的白名单 DTO(新字段天然不漏),publicGetClientRecentRecords 与 /api/clients WS
+// 则直通原始报告、靠这里逐字段剥离。2026-11-27 把 governor 提到 Report 顶层时
+// 只改了白名单出口,后两个就把 idle_sec(主人多久没碰键盘)/gpu_pct(可反推负载)/
+// paused_by_gov 原样吐给了未认证调用者。裸报告出口的新增敏感字段只改这里,
+// 别在每个出口各写一遍。
 //
 // 注意:入参必须是值拷贝(GetRecentReports / GetLatestReport 返回的都是副本),
 // 否则会把共享缓存里的字段一起抹掉。

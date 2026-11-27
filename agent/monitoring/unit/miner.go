@@ -59,6 +59,8 @@ const (
 	governorStaleAfter = 45 * time.Second
 	// governorCollectionInterval 档位轮询间隔,与调节器 daemon 的写盘节奏一致。
 	governorCollectionInterval = 10 * time.Second
+	// governorMissWarnAfter 连续这么多周期读不到有效档位时告警一次(≈1 分钟)。
+	governorMissWarnAfter = 6
 )
 
 // governorStatePath 返回 state.json 路径;非 Windows 且未显式配置时返回 ""(不采集)。
@@ -122,15 +124,27 @@ var (
 	// 文件短暂缺失/读失败时保留旧值,Governor() 用 lastGovernorAt 判定是否还新鲜。
 	lastGovernor   *GovernorStat
 	lastGovernorAt time.Time
+	// governorMissStreak 连续未读到有效档位的周期数,用于一次性「路径配错」告警。
+	governorMissStreak int
 )
 
-// refreshGovernorLocked 无条件刷新档位缓存(调用方须已持有 minerMu)。
-// 成功读到 → 更新缓存;文件过期/缺失/解析失败 → 保留旧值到其自身时效截止,
-// 避免调节器一次瞬时写失败就把档位从页面抹掉。
-func refreshGovernorLocked() {
+// refreshGovernor 刷新档位缓存(仅独立采集器调用):成功读到 → 更新缓存;
+// 文件过期/缺失/解析失败 → 保留旧值到其自身时效截止,避免调节器一次瞬时
+// 写失败就把档位从页面抹掉。连续多个周期读不到有效档位时打一次性告警:
+// 路径配错 / 调节器未部署会让「这台机器没有徽标」变成纯静默失败。
+func refreshGovernor() {
+	minerMu.Lock()
+	defer minerMu.Unlock()
 	if g := readGovernorState(); g != nil {
 		lastGovernor = g
 		lastGovernorAt = time.Now()
+		governorMissStreak = 0
+		return
+	}
+	governorMissStreak++
+	if governorMissStreak == governorMissWarnAfter {
+		log.Printf("[governor] no valid state.json after %d polls at %s — wrong path or governor not deployed?",
+			governorMissStreak, governorStatePath())
 	}
 }
 
@@ -146,13 +160,6 @@ func Governor() *GovernorStat {
 		return nil
 	}
 	return lastGovernor
-}
-
-// refreshGovernor 自行加锁刷新档位缓存,供独立的后台采集器调用。
-func refreshGovernor() {
-	minerMu.Lock()
-	defer minerMu.Unlock()
-	refreshGovernorLocked()
 }
 
 // StartGovernorCollector 启动档位采集 goroutine。与 StartMinerCollector 相互独立:
@@ -272,9 +279,6 @@ func collectMinerOnce(url string) {
 	stat, err := fetchMinerStat(url)
 	minerMu.Lock()
 	defer minerMu.Unlock()
-	// 档位先刷:它只依赖本机 state.json,不受矿工 API 死活影响。
-	// 放在 err 分支之前,保证 pause 档(服务已被停)时档位照样新鲜。
-	refreshGovernorLocked()
 	if err != nil {
 		minerFetchFails++
 		// 每次失败都打日志太吵,只在阈值附近打(首批 + 达到阈值那次)。

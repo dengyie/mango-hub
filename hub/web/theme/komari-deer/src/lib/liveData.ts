@@ -44,8 +44,10 @@ export function normalizeLiveData(value: unknown): LiveDataResponse {
         ...(govTier ? {
           governor: {
             tier: govTier,
-            idle_sec: numeric(govRaw?.idle_sec),
-            gpu_pct: numeric(govRaw?.gpu_pct),
+            // idle_sec/gpu_pct 只有 admin 响应才带;缺失时必须缺键而不是 numeric()
+            // 兜成 0 —— 0 与「缺失」不可区分,未来组件一渲染就会给游客造出「空闲 0 秒」。
+            ...(govRaw && "idle_sec" in govRaw ? { idle_sec: numeric(govRaw.idle_sec) } : {}),
+            ...(govRaw && "gpu_pct" in govRaw ? { gpu_pct: numeric(govRaw.gpu_pct) } : {}),
           },
         } : {}),
       } : undefined,

@@ -45,6 +45,7 @@ func resetMinerState(t *testing.T) {
 	minerFetchFails = 0
 	lastGovernor = nil
 	lastGovernorAt = time.Time{}
+	governorMissStreak = 0
 	minerMu.Unlock()
 	t.Cleanup(func() {
 		minerMu.Lock()
@@ -53,6 +54,7 @@ func resetMinerState(t *testing.T) {
 		minerFetchFails = 0
 		lastGovernor = nil
 		lastGovernorAt = time.Time{}
+		governorMissStreak = 0
 		minerMu.Unlock()
 	})
 }

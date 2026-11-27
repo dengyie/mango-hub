@@ -414,6 +414,8 @@ func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 		Tier string `json:"tier"` // full | eco | pause
 		// idle_sec / gpu_pct 只给管理员:未认证调用者拿到 idle_sec 等于「主人多久没
 		// 碰键盘」,gpu_pct 能反推在跑什么负载,属行为隐私;游客只需要档位本身。
+		// 注:tier 本身也是粒度约 2 分钟的「主人在场」信号(eco=有输入,full=空闲
+		// ≥120s),公开徽标依赖它——这是接受过的产品取舍,别当漏洞单方面修掉。
 		IdleSec int64   `json:"idle_sec,omitempty"`
 		GpuPct  float64 `json:"gpu_pct,omitempty"`
 	}

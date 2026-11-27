@@ -228,6 +228,45 @@ func TestGetNodesLatestStatusLegacyNestedGovernor(t *testing.T) {
 	}
 }
 
+// 双源冲突时顶层必须赢:正常 agent 只发一种形态,但滚动窗口内新旧字段并存
+// (或异常 agent 重复上报)时,读取优先级必须确定而不是取决于字段顺序。
+func TestGetNodesLatestStatusTopLevelGovernorWinsOverNested(t *testing.T) {
+	isolateLatestReports(t)
+	uuid := "node-mining-live"
+	db := dbcore.GetDBInstance()
+	db.Where("uuid = ?", uuid).Delete(&models.Client{})
+	if err := db.Create(&models.Client{UUID: uuid, Name: "dual-source", Token: "dual-token"}).Error; err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	agent_runtime.RecordReport(v2.Report{
+		UUID:      uuid,
+		UpdatedAt: time.Now().UTC(),
+		Mining: &v2.MiningReport{
+			Algorithm: "pearlhash",
+			Governor:  &v2.GovernorReport{Tier: "pause"},
+		},
+		Governor: &v2.GovernorReport{Tier: "eco"},
+	})
+
+	guestCtx := rpc.NewContextWithMeta(context.Background(), &rpc.ContextMeta{})
+	res, jerr := getNodesLatestStatus(guestCtx, rpc.NewRequest(1, "common:getNodesLatestStatus", map[string]any{"uuid": uuid}))
+	if jerr != nil {
+		t.Fatalf("latest status: %+v", jerr)
+	}
+	b, err := json.Marshal(res)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	gov := got["mining"].(map[string]any)["governor"].(map[string]any)
+	if gov["tier"] != "eco" {
+		t.Fatalf("top-level governor must win over nested, got %s", b)
+	}
+}
+
 func TestGetNodesLatestStatusOmitsMiningWhenAbsent(t *testing.T) {
 	isolateLatestReports(t)
 	uuid := "node-mining-live"

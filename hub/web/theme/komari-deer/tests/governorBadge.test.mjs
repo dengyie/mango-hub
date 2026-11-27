@@ -94,6 +94,23 @@ test("normalizeLiveData keeps mining usable when the governor block is malformed
   assert.equal(mining?.governor?.gpu_pct, 0);
 });
 
+// 回归:游客响应里 hub 不带 idle_sec/gpu_pct(isAdmin 门控),归一化不得把它们
+// numeric() 兜成 0 —— 0 与「缺失」不可区分,未来组件一渲染就会给游客造出「空闲 0 秒」。
+test("normalizeLiveData omits idle_sec/gpu_pct keys when the backend omits them", () => {
+  const res = normalizeLiveData({
+    guest: { ...liveBase, mining: { governor: { tier: "eco" } } },
+  });
+  const gov = res.data.data.guest.mining?.governor;
+  assert.equal(gov?.tier, "eco");
+  assert.equal("idle_sec" in (gov ?? {}), false, "guest DTO must not fabricate idle_sec: 0");
+  assert.equal("gpu_pct" in (gov ?? {}), false, "guest DTO must not fabricate gpu_pct: 0");
+  // admin 形态(键存在但值非法)仍然兜 0,不产生 NaN
+  const admin = normalizeLiveData({
+    admin: { ...liveBase, mining: { governor: { tier: "eco", idle_sec: "x" } } },
+  });
+  assert.equal(admin.data.data.admin.mining?.governor?.idle_sec, 0);
+});
+
 // 回归:pause 档会停掉矿工服务,后端只发 {mining:{governor:{tier:"pause"}}}。
 // 归一化不能把它当「没有 mining」丢掉(否则徽标消失),也不能缺字段就渲染假 pill。
 test("governor-only mining block survives normalization without a fake pill", () => {

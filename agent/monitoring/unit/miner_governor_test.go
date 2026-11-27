@@ -105,6 +105,8 @@ func TestGovernorSurvivesMinerOutage(t *testing.T) {
 		_, _ = w.Write([]byte(srbV2Sample))
 	}))
 
+	// 档位由独立采集器灌入(refreshGovernor),矿工采集只管矿工快照。
+	refreshGovernor()
 	collectMinerOnce(srv.URL + "/api/v2/status")
 	if got := Governor(); got == nil || got.Tier != "pause" {
 		t.Fatalf("miner alive: Governor() = %+v, want pause", got)
@@ -137,6 +139,8 @@ func TestGovernorAvailableWithoutAnyMinerSuccess(t *testing.T) {
 	resetMinerState(t)
 	writeGovernorFile(t, `{"tier":"full","idleSec":300,"gpuPct":0.4}`, 0)
 
+	// 独立档位采集器照常刷新;矿工采集对死端口连败。
+	refreshGovernor()
 	collectMinerOnce("http://127.0.0.1:1/api/v2/status")
 
 	if Miner() != nil {
@@ -182,21 +186,30 @@ func TestStartGovernorCollectorNoopWithoutPath(t *testing.T) {
 }
 
 // 瞬时写失败(文件被清空/写一半)不该立刻把档位从页面抹掉,但超过自身时效必须过期。
+// 同时覆盖缺失告警的计数行为:连续 miss 达到阈值恰好告警一次,恢复后归零。
 func TestGovernorKeepsLastValueUntilItsOwnStaleness(t *testing.T) {
 	resetMinerState(t)
 	writeGovernorFile(t, `{"tier":"eco","idleSec":5,"gpuPct":1}`, 0)
-	collectMinerOnce("http://127.0.0.1:1/api/v2/status")
+	refreshGovernor()
 	if got := Governor(); got == nil || got.Tier != "eco" {
 		t.Fatalf("baseline Governor() = %+v, want eco", got)
+	}
+	if governorMissStreak != 0 {
+		t.Fatalf("fresh read must reset miss streak, got %d", governorMissStreak)
 	}
 
 	// 文件被清空:读取失败 -> 保留上一次有效档位
 	if err := os.WriteFile(os.Getenv(governorStateEnv), []byte(""), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	collectMinerOnce("http://127.0.0.1:1/api/v2/status")
-	if got := Governor(); got == nil || got.Tier != "eco" {
-		t.Fatalf("after transient write failure Governor() = %+v, want the previous eco", got)
+	for i := 0; i < governorMissWarnAfter-1; i++ {
+		refreshGovernor()
+		if got := Governor(); got == nil || got.Tier != "eco" {
+			t.Fatalf("after transient write failure Governor() = %+v, want the previous eco", got)
+		}
+	}
+	if governorMissStreak != governorMissWarnAfter-1 {
+		t.Fatalf("miss streak = %d, want %d", governorMissStreak, governorMissWarnAfter-1)
 	}
 
 	// 手动把缓存时刻推老 -> 超过 governorStaleAfter 必须丢弃(调节器真的停了)
