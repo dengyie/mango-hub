@@ -12,22 +12,22 @@ import (
 var flags = pkg_flags.GlobalConfig
 
 type report struct {
-	CPU         cpuReport         `json:"cpu"`
-	Ram         usageReport       `json:"ram"`
-	Swap        usageReport       `json:"swap"`
-	Load        loadReport        `json:"load"`
-	Disk        usageReport       `json:"disk"`
-	DiskIO      []unit.DiskIOStat `json:"disk_io,omitempty"`
-	Mining      *unit.MinerStat   `json:"mining,omitempty"`
+	CPU    cpuReport         `json:"cpu"`
+	Ram    usageReport       `json:"ram"`
+	Swap   usageReport       `json:"swap"`
+	Load   loadReport        `json:"load"`
+	Disk   usageReport       `json:"disk"`
+	DiskIO []unit.DiskIOStat `json:"disk_io,omitempty"`
+	Mining *unit.MinerStat   `json:"mining,omitempty"`
 	// Governor 是 power_governor 自适应功率档位,刻意放在报告顶层而不是 mining 内:
 	// pause 档会停掉矿工服务、mining 整体缺失,档位必须独立存活才能被面板看到。
 	Governor    *unit.GovernorStat `json:"governor,omitempty"`
 	Network     networkReport      `json:"network"`
-	Connections connectionsReport `json:"connections"`
-	GPU         interface{}       `json:"gpu,omitempty"`
-	Uptime      uint64            `json:"uptime"`
-	Process     int               `json:"process"`
-	Message     string            `json:"message"`
+	Connections connectionsReport  `json:"connections"`
+	GPU         interface{}        `json:"gpu,omitempty"`
+	Uptime      uint64             `json:"uptime"`
+	Process     int                `json:"process"`
+	Message     string             `json:"message"`
 }
 
 type cpuReport struct {

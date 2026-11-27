@@ -102,13 +102,13 @@ type Report struct {
 	// Governor 是 power_governor 自适应功率档位。刻意独立于 Mining:调节器进
 	// pause 档会停掉矿工服务,mining 整体缺失,若档位嵌在 mining 里就会在
 	// 最该显示「暂停(让卡)」的时刻从面板消失。
-	Governor  *GovernorReport  `json:"governor,omitempty"`
-	DiskIO    []DiskIOReport   `json:"disk_io,omitempty"`
-	Uptime    int64            `json:"uptime"`
-	Process   int              `json:"process"`
-	Message   string           `json:"message"`
-	Method    string           `json:"method,omitempty"`
-	UpdatedAt time.Time        `json:"updated_at"`
+	Governor  *GovernorReport `json:"governor,omitempty"`
+	DiskIO    []DiskIOReport  `json:"disk_io,omitempty"`
+	Uptime    int64           `json:"uptime"`
+	Process   int             `json:"process"`
+	Message   string          `json:"message"`
+	Method    string          `json:"method,omitempty"`
+	UpdatedAt time.Time       `json:"updated_at"`
 }
 
 type CPUReport struct {
